@@ -9,7 +9,7 @@ interface Env {
 
 // In-memory fallback cache for worker instance lifespan
 let memoryHistory: any[] | null = null;
-let memoryCache: { period: string; prediction: any } | null = null;
+let memoryCache: { period: string; prediction: any; timestamp?: number } | null = null;
 let lastScrapeCheck = 0;
 
 async function getRecords(env: Env): Promise<any[]> {
@@ -41,14 +41,24 @@ async function saveRecords(records: any[], env: Env) {
 }
 
 async function getCachedPrediction(period: string, env: Env) {
-  if (memoryCache && memoryCache.period === period && memoryCache.prediction?.isAIPowered) {
-    return memoryCache.prediction;
+  if (memoryCache && memoryCache.period === period) {
+    if (memoryCache.prediction?.isAIPowered) {
+      return memoryCache.prediction;
+    }
+    if (memoryCache.timestamp && Date.now() - memoryCache.timestamp < 120 * 1000) {
+      return memoryCache.prediction;
+    }
   }
   if (env.LOTTERY_KV) {
     try {
       const stored = await env.LOTTERY_KV.get(`PREDICTION_CACHE_${period}`, { type: 'json' });
-      if (stored && stored.isAIPowered) {
-        return stored;
+      if (stored) {
+        if (stored.isAIPowered) {
+          return stored;
+        }
+        if (stored.timestamp && Date.now() - stored.timestamp < 120 * 1000) {
+          return stored;
+        }
       }
     } catch (e) {
       console.error('Error reading prediction cache from KV:', e);
@@ -58,10 +68,11 @@ async function getCachedPrediction(period: string, env: Env) {
 }
 
 async function savePredictionCache(period: string, prediction: any, env: Env) {
-  memoryCache = { period, prediction };
+  const cachedData = { ...prediction, timestamp: Date.now() };
+  memoryCache = { period, prediction: cachedData, timestamp: Date.now() };
   if (env.LOTTERY_KV) {
     try {
-      await env.LOTTERY_KV.put(`PREDICTION_CACHE_${period}`, JSON.stringify(prediction), {
+      await env.LOTTERY_KV.put(`PREDICTION_CACHE_${period}`, JSON.stringify(cachedData), {
         expirationTtl: 86400 * 7, // 7 days
       });
     } catch (e) {
@@ -192,8 +203,8 @@ ${recordsText}
 
     let responseData: any = null;
     const configs = [
-      { version: 'v1beta', model: 'gemini-2.5-flash' },
       { version: 'v1', model: 'gemini-2.5-flash' },
+      { version: 'v1beta', model: 'gemini-2.5-flash' },
       { version: 'v1beta', model: 'gemini-3.8-flash' },
     ];
 
@@ -439,8 +450,8 @@ export const onRequest = async (context: { request: Request; env: Env }) => {
 
       let content = '';
       const configs = [
-        { version: 'v1beta', model: 'gemini-2.5-flash' },
         { version: 'v1', model: 'gemini-2.5-flash' },
+        { version: 'v1beta', model: 'gemini-2.5-flash' },
         { version: 'v1beta', model: 'gemini-3.8-flash' },
       ];
       for (const cfg of configs) {

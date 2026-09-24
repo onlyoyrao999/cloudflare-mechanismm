@@ -4859,8 +4859,8 @@ ${recordsText}
 }`;
     let responseData = null;
     const configs = [
-      { version: "v1beta", model: "gemini-2.5-flash" },
       { version: "v1", model: "gemini-2.5-flash" },
+      { version: "v1beta", model: "gemini-2.5-flash" },
       { version: "v1beta", model: "gemini-3.8-flash" }
     ];
     for (const cfg of configs) {
@@ -5074,8 +5074,8 @@ var onRequest = /* @__PURE__ */ __name(async (context) => {
 \u5B57\u6570\u8981\u6C42\u5728800\u5B57\u5DE6\u53F3\uFF0C\u8BED\u6C14\u8981\u7406\u6027\u3001\u51B7\u9759\u3001\u5145\u6EE1\u9AD8\u51C0\u503C\u5B66\u8005\u98CE\u8303\u3002\u5FC5\u987B\u4F7F\u7528 Markdown \u683C\u5F0F\u8F93\u51FA\uFF0C\u6587\u5B57\u6392\u7248\u4F18\u96C5\u7CBE\u7F8E\u3002\u4E0D\u8981\u4F7F\u7528\u5E9F\u8BDD\uFF0C\u76F4\u5954\u4E3B\u9898\u3002`;
       let content = "";
       const configs = [
-        { version: "v1beta", model: "gemini-2.5-flash" },
         { version: "v1", model: "gemini-2.5-flash" },
+        { version: "v1beta", model: "gemini-2.5-flash" },
         { version: "v1beta", model: "gemini-3.8-flash" }
       ];
       for (const cfg of configs) {
@@ -5618,7 +5618,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// ../.wrangler/tmp/bundle-Gsjkzi/middleware-insertion-facade.js
+// ../.wrangler/tmp/bundle-vN7CJJ/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -5650,7 +5650,7 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// ../.wrangler/tmp/bundle-Gsjkzi/middleware-loader.entry.ts
+// ../.wrangler/tmp/bundle-vN7CJJ/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
