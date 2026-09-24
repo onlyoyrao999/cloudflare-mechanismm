@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "macau-lotto-ai",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "kv_namespaces": [
+    {
+      "binding": "LOTTERY_KV",
+      "id": "YOUR_KV_NAMESPACE_ID_OPTIONAL"
+    }
+  ]
+}

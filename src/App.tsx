@@ -15,15 +15,10 @@ import {
   FileText,
   Clock,
   BookOpen,
-  ChevronRight,
-  ShieldCheck,
-  Trash2,
-  RotateCcw
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DrawRecord, TriggerEvent, ExclusionPrediction, FrequencyStats, AnalyzeAPIResponse } from './types.js';
-import { analyzeData, predictNextDraw } from './data/analyzer.js';
-import fallbackHistory from './data/history.json';
 
 // Firebase Integrations
 import { auth, googleProvider, db, handleFirestoreError, OperationType } from './firebase.js';
@@ -34,16 +29,11 @@ export default function App() {
   const [data, setData] = useState<AnalyzeAPIResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [clearingCache, setClearingCache] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // AI report state
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [generatingAi, setGeneratingAi] = useState<boolean>(false);
-
-  // Multi-model fallback repredict state
-  const [repredicting, setRepredicting] = useState<boolean>(false);
-  const [repredictMessage, setRepredictMessage] = useState<string | null>(null);
 
   // Active interactive tabs & filters
   const [activeTab, setActiveTab] = useState<'prediction' | 'backtest' | 'heatmap'>('prediction');
@@ -198,32 +188,7 @@ export default function App() {
     }
   };
 
-  // Helper to compute analysis on the client side if API is unavailable or static deployment on CF
-  const computeClientSideFallback = (recordsInput?: DrawRecord[]): AnalyzeAPIResponse => {
-    const records = (recordsInput && recordsInput.length > 0 ? recordsInput : fallbackHistory) as DrawRecord[];
-    const analysis = analyzeData(records);
-    const lastPredictions = analysis.predictions.length > 0 
-      ? analysis.predictions[analysis.predictions.length - 1].predictedNumbers 
-      : [];
-    const mathPredict = predictNextDraw(records, analysis.triggers, lastPredictions);
-    return {
-      latestDraw: records[0],
-      summary: analysis.summary,
-      triggers: analysis.triggers.slice(-50),
-      predictions: analysis.predictions.slice(-30),
-      frequencyStats: analysis.frequencyStats,
-      prediction: {
-        ...mathPredict,
-        isAIPowered: false,
-        modelUsed: '高精度数理对冲保底 (全网离线自愈引擎)',
-        isFallback: true,
-        fallbackReason: '当前处于纯静态运行模式或网络受限，已由客户端数理引擎实时解析全量开奖轨迹',
-      },
-      totalCount: records.length,
-    };
-  };
-
-  // Fetch all analyzer data from our Express server API or Cloudflare Pages
+  // Fetch all analyzer data from our Express server API
   const fetchAnalysis = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
@@ -232,12 +197,9 @@ export default function App() {
     try {
       const response = await fetch('/api/analyze');
       if (!response.ok) {
-        throw new Error(`API 响应码: ${response.status}`);
+        throw new Error(`分析初始化失败: HTTP ${response.status}`);
       }
       const rawData: AnalyzeAPIResponse = await response.json();
-      if (!rawData || !rawData.latestDraw) {
-        throw new Error('返回数据结构异常');
-      }
       setData(rawData);
       
       // Auto-select latest trigger if available
@@ -245,13 +207,8 @@ export default function App() {
         setSelectedTrigger(rawData.triggers[rawData.triggers.length - 1]);
       }
     } catch (err: any) {
-      console.warn('API 接口获取失败，自动无缝切换至内置数理大盘引擎:', err);
-      // Seamlessly fall back to client-side mathematical engine
-      const clientData = computeClientSideFallback();
-      setData(clientData);
-      if (clientData.triggers && clientData.triggers.length > 0) {
-        setSelectedTrigger(clientData.triggers[clientData.triggers.length - 1]);
-      }
+      console.error(err);
+      setError(err.message || '获取分析模型失败');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -276,78 +233,8 @@ export default function App() {
       await fetchAnalysis(true);
     } catch (err: any) {
       console.error(err);
-      // Fallback reload
-      await fetchAnalysis(true);
-    } finally {
+      setError(err.message || '强制同步服务器数据失败');
       setRefreshing(false);
-    }
-  };
-
-  // Force purge previous period cache & reset data completely
-  const clearPreviousDataAndReset = async () => {
-    setClearingCache(true);
-    setError(null);
-    try {
-      await fetch('/api/clear-cache', { method: 'POST' }).catch(() => {});
-      try {
-        localStorage.clear();
-        sessionStorage.clear();
-      } catch {}
-      
-      let freshData: AnalyzeAPIResponse | null = null;
-      try {
-        const res = await fetch(`/api/analyze?clean=true&t=${Date.now()}`);
-        if (res.ok) {
-          freshData = await res.json();
-        }
-      } catch {}
-
-      if (!freshData || !freshData.latestDraw) {
-        freshData = computeClientSideFallback();
-      }
-      setData(freshData);
-      setRepredictMessage('已彻底清理上一期实际开奖号码与历史缓存，已纯净呈现最新推演！');
-      setTimeout(() => setRepredictMessage(null), 8000);
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || '清理上一期缓存失败');
-    } finally {
-      setClearingCache(false);
-    }
-  };
-
-  // Manual trigger for multi-model fallback chain (3.8 -> 3.5 -> 3.1 -> math hedge)
-  const forceRepredict = async () => {
-    setRepredicting(true);
-    setRepredictMessage(null);
-    try {
-      const res = await fetch('/api/repredict', { method: 'POST' });
-      if (res.ok) {
-        const result = await res.json();
-        if (result.prediction && data) {
-          setData({
-            ...data,
-            prediction: result.prediction,
-          });
-          setRepredictMessage(result.message || '推演完成');
-          setTimeout(() => setRepredictMessage(null), 8000);
-          return;
-        }
-      }
-      throw new Error('API 响应异常');
-    } catch (err: any) {
-      console.warn('API 推演不可达，执行前端数理防重叠引擎推演:', err);
-      if (data) {
-        const clientCalc = computeClientSideFallback();
-        setData({
-          ...data,
-          prediction: clientCalc.prediction,
-        });
-        setRepredictMessage('推演完成：已通过本地数理防重叠引擎生成最新排除推荐！');
-        setTimeout(() => setRepredictMessage(null), 8000);
-      }
-    } finally {
-      setRepredicting(false);
     }
   };
 
@@ -466,10 +353,10 @@ export default function App() {
             <div className="flex items-center gap-2 mb-1">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
               <h1 className="text-lg font-bold tracking-tight text-white">MacauJC 赛马数字轨迹分析系统</h1>
-              <span className="text-[10px] bg-slate-900 border border-slate-800 text-indigo-300 px-1.5 py-0.5 rounded font-mono">Expert V1.3 · 多级智能回退</span>
+              <span className="text-[10px] bg-slate-900 border border-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono">Expert V1.2</span>
             </div>
             <p className="text-xs text-slate-400">
-              基于 Gemini 3.8 Flash 混沌概率引擎（集成 3.5 / 3.1-Lite 多级平滑回退与数理保底），隔期跳跃触发与高维对冲
+              采用隔期跳跃触发机制锁定夹心变动，通过环形邻轨排除策略精炼 6 位不出现号码
             </p>
           </div>
 
@@ -489,21 +376,11 @@ export default function App() {
 
             <button
               onClick={forceRefreshScraper}
-              disabled={refreshing || clearingCache}
+              disabled={refreshing}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-xs font-medium text-slate-200 hover:text-white transition cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               <span>{refreshing ? '正在抓取同步...' : '极速强制同步'}</span>
-            </button>
-
-            <button
-              onClick={clearPreviousDataAndReset}
-              disabled={clearingCache || refreshing}
-              title="彻底清理上一期实际开奖号码及历史预测缓存"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/30 hover:bg-rose-900/40 border border-rose-900/50 rounded-lg text-xs font-medium text-rose-300 hover:text-rose-200 transition cursor-pointer disabled:opacity-50 shadow-sm"
-            >
-              <Trash2 className={`w-3.5 h-3.5 ${clearingCache ? 'animate-spin' : ''}`} />
-              <span>{clearingCache ? '正在清理旧期...' : '清理上一期数据'}</span>
             </button>
 
             {/* Firebase Auth User Status Widget */}
@@ -767,21 +644,13 @@ export default function App() {
                         新一期极低概率（排除） 6 个号码
                       </h2>
                       {prediction.isAIPowered ? (
-                        prediction.isFallback ? (
-                          <span className="text-[10.5px] bg-amber-500/10 border border-amber-500/30 text-amber-300 px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1.5 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                            <span>已自动回退至 {prediction.modelUsed || '备用模型'}</span>
-                          </span>
-                        ) : (
-                          <span className="text-[10.5px] bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1.5 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                            <span>Gemini 3.8 Flash 智能推演</span>
-                          </span>
-                        )
+                        <span className="text-[10.5px] bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-2 py-0.5 rounded-full font-medium flex items-center gap-1 shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                          Gemini 3.5 智能预测
+                        </span>
                       ) : (
-                        <span className="text-[10.5px] bg-slate-900 border border-slate-750 text-slate-300 px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1.5 shadow-sm">
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>高精度数理对冲保底 (安全锁定)</span>
+                        <span className="text-[10.5px] bg-slate-950 border border-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-medium">
+                          高精度数理对冲运算
                         </span>
                       )}
                     </div>
@@ -812,10 +681,10 @@ export default function App() {
                 {/* RULES MET */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs border-t border-slate-850 pt-5">
                   <div className="flex gap-2 text-slate-400">
-                    <CheckCircle2 className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
                     <div>
-                      <strong className="text-slate-200 block mb-0.5">上一期开奖号全额清理</strong>
-                      <p className="text-[10px] text-slate-500">已彻底清理排除第 {latestDraw.period} 期开奖号 [{latestDraw.numbers.map(n => n.toString().padStart(2, '0')).join(', ')}]，100% 杜绝上一期开奖号滞留。</p>
+                      <strong className="text-slate-200 block mb-0.5">防重叠排除</strong>
+                      <p className="text-[10px] text-slate-500">已自动核对并排除第 {latestDraw.period} 期的名单，确保上一期预测不重复。</p>
                     </div>
                   </div>
                   <div className="flex gap-2 text-slate-400">
@@ -826,89 +695,12 @@ export default function App() {
                     </div>
                   </div>
                   <div className="flex gap-2 text-slate-400">
-                    <CheckCircle2 className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-blue-400 flex-shrink-0" />
                     <div>
-                      <strong className="text-slate-200 block mb-0.5">防重叠与冷热波峰</strong>
-                      <p className="text-[10px] text-slate-500">已核对上一期排除名单，并对大盘冷态失调区间号码与长期遗漏波峰实施精准过滤。</p>
+                      <strong className="text-slate-200 block mb-0.5">冷热平衡偏向</strong>
+                      <p className="text-[10px] text-slate-500">对495期历史冷指标进行扫描，聚焦于当前失衡的极端冷滞号码和被套遗漏波峰号码。</p>
                     </div>
                   </div>
-                </div>
-
-                {/* FALLBACK STATUS & MANUAL RETRY CONTROLLER (PREVENTS INFINITE CONNECTION LOOP) */}
-                <div className="mt-4 pt-4 border-t border-slate-850">
-                  <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs transition-colors ${
-                    !prediction.isAIPowered 
-                      ? 'bg-amber-950/20 border-amber-900/40 text-amber-300'
-                      : prediction.isFallback
-                      ? 'bg-indigo-950/20 border-indigo-900/40 text-indigo-300'
-                      : 'bg-slate-950/40 border-slate-850 text-slate-300'
-                  }`}>
-                    <div className="flex items-start gap-3">
-                      {!prediction.isAIPowered ? (
-                        <ShieldCheck className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                      ) : prediction.isFallback ? (
-                        <AlertCircle className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
-                      ) : (
-                        <Sparkles className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-                      )}
-                      <div>
-                        <div className="font-semibold text-white flex items-center gap-2">
-                          <span>
-                            {!prediction.isAIPowered 
-                              ? '已安全锁定【高精度数理对冲保底】' 
-                              : prediction.isFallback
-                              ? `智能降级生效中：当前由 ${prediction.modelUsed} 生成`
-                              : 'Gemini 3.8 Flash 高维推演已就绪'}
-                          </span>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-750">
-                            防死锁保障
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                          {!prediction.isAIPowered
-                            ? (prediction.fallbackReason || '由于当前 AI 远程模型响应超时或网络限制，系统已自动启用 165 期大盘轨迹闭环数理算法，并已自动停止重试，杜绝无限连接与卡顿。')
-                            : prediction.isFallback
-                            ? 'Gemini 3.8 响应超时，系统已自动平滑降级至备用模型，无需手动刷新，推演流程完全无缝。'
-                            : '已通过 165 期历史轨迹、冷热遗漏对冲与活跃加锁完成高维推演，结果已实时同步存证。'}
-                        </p>
-                        {prediction.fallbackLogs && prediction.fallbackLogs.length > 0 && (
-                          <div className="mt-2 text-[10px] font-mono text-slate-400 bg-slate-950/70 p-2 rounded-lg border border-slate-800">
-                            <span className="text-slate-500 font-bold block mb-0.5">链路回退记录：</span>
-                            {prediction.fallbackLogs.map((log: string, lIdx: number) => (
-                              <div key={lIdx} className="text-amber-400/80">↳ {log}</div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0 flex-wrap">
-                      <button
-                        onClick={clearPreviousDataAndReset}
-                        disabled={clearingCache || repredicting}
-                        className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-950/20 hover:bg-rose-900/30 border border-rose-800/40 text-rose-300 hover:text-rose-200 rounded-xl text-xs font-medium transition cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-sm"
-                      >
-                        <Trash2 className={`w-3.5 h-3.5 ${clearingCache ? 'animate-spin' : ''}`} />
-                        <span>{clearingCache ? '正在清理旧期...' : '清理上一期数据'}</span>
-                      </button>
-
-                      <button
-                        onClick={forceRepredict}
-                        disabled={repredicting || clearingCache}
-                        className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-200 hover:text-white rounded-xl text-xs font-medium transition cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-sm"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${repredicting ? 'animate-spin' : ''}`} />
-                        <span>{repredicting ? 'AI 阶梯连接中...' : '手动重试 AI 阶梯推演'}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {repredictMessage && (
-                    <div className="mt-2.5 p-2.5 rounded-xl bg-slate-950 border border-indigo-900/50 text-[11px] font-mono text-indigo-300 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                      <span>{repredictMessage}</span>
-                    </div>
-                  )}
                 </div>
               </div>
 

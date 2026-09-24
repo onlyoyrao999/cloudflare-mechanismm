@@ -140,71 +140,8 @@ async function scrapeLatest(): Promise<{ success: boolean; count: number; messag
   }
 }
 
-/// Priority Model Fallback Chain:
-// 1. Primary: gemini-3.8-flash
-// 2. Secondary Fallback: gemini-3.5-flash
-// 3. Lightweight Fallback: gemini-3.1-flash-lite
-// 4. Ultimate Guaranteed Baseline: High-precision Mathematical Hedge Engine
-const MODEL_FALLBACK_CHAIN = [
-  'gemini-3.8-flash',
-  'gemini-3.5-flash',
-  'gemini-3.1-flash-lite',
-];
-
 /**
- * Executes a Gemini API call with a strict timeout to avoid infinite hanging.
- */
-async function callGeminiWithTimeout(
-  ai: GoogleGenAI,
-  modelName: string,
-  prompt: string,
-  timeoutMs: number = 13000
-): Promise<any> {
-  let timeoutTimer: any;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutTimer = setTimeout(() => {
-      reject(new Error(`Model ${modelName} request timed out (${timeoutMs / 1000}s)`));
-    }, timeoutMs);
-  });
-
-  const apiPromise = ai.models.generateContent({
-    model: modelName,
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          predictedNumbers: {
-            type: Type.ARRAY,
-            items: { type: Type.INTEGER },
-            description: '6 unique numbers from 1 to 49 that are least likely to appear',
-          },
-          reasoning: {
-            type: Type.OBJECT,
-            properties: {
-              triggerLocking: { type: Type.STRING },
-              edgeDeduction: { type: Type.STRING },
-              omissionConclusion: { type: Type.STRING },
-            },
-            required: ['triggerLocking', 'edgeDeduction', 'omissionConclusion'],
-          },
-        },
-        required: ['predictedNumbers', 'reasoning'],
-      },
-    },
-  });
-
-  try {
-    return await Promise.race([apiPromise, timeoutPromise]);
-  } finally {
-    clearTimeout(timeoutTimer);
-  }
-}
-
-/**
- * Perform predictive analysis with Multi-Tier Model Fallback
- * (gemini-3.8-flash -> gemini-3.5-flash -> gemini-3.1-flash-lite -> math fallback)
+ * Perform predictive analysis using Gemini 3.5-flash with structural JSON guidance
  */
 async function getAIPrediction(
   rawRecords: any[],
@@ -215,52 +152,41 @@ async function getAIPrediction(
   const mathPredict = predictNextDraw(rawRecords, triggers, lastPredictions);
   const activeTargets = mathPredict.activeTargets;
   const activeNumbers = activeTargets.map((t: any) => t.number);
-  const latestDrawnNumbers = latestDraw ? latestDraw.numbers : [];
-  const forbiddenNumbers = Array.from(new Set([...activeNumbers, ...latestDrawnNumbers]));
 
   if (!process.env.GEMINI_API_KEY) {
     console.log('No GEMINI_API_KEY. Using mathematical fallback prediction.');
-    return {
-      ...mathPredict,
-      isAIPowered: false,
-      modelUsed: '数理对冲保底引擎',
-      isFallback: true,
-      fallbackReason: '未配置 GEMINI_API_KEY，已启用高阶数理对冲保底',
-    };
+    return { ...mathPredict, isAIPowered: false };
   }
 
-  const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
+  try {
+    const ai = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
       },
-    },
-  });
+    });
 
-  // Provide the 165 lottery periods as statistical text context
-  const recordsText = rawRecords
-    .slice(0, 165)
-    .map((r) => `${r.period}: [${r.numbers.join(',')}]`)
-    .join('\n');
+    // Provide the 165 lottery periods as statistical text context
+    const recordsText = rawRecords
+      .slice(0, 165)
+      .map((r) => `${r.period}: [${r.numbers.join(',')}]`)
+      .join('\n');
 
-  const prompt = `您是一位高等概率论专家和赛马彩票混沌学学者。
+    const prompt = `您是一位高等概率论专家和赛马彩票混沌学学者。
 现在我们将向您提供澳门赛马会最近的 165 期开奖历史数据。每一期包含 7 个开奖号码（范围从 01 到 49）。
 
-【重要分析理论与对冲规则（必须彻底清理上一期数据）】：
+【重要分析理论与对冲规则】：
 1. 隔期同号轨迹（Hedge 对冲防线）：当前有些号码正处于活跃的轨迹追逐周期中。这些号码在接下来的开奖中出现概率极高。
    - 处于追逐周期中的活跃目标号：[${activeNumbers.join(', ')}]
-   - ⚠️【绝对禁区】：在您预测的“不可能开出的6个号码”中，**绝对不能**包含这几个活跃目标号码！
+   - ⚠️【绝对禁区】：在您预测的“不可能开出的6个号码”中，**绝对不能**包含这几个活跃目标号码！因为它们随时可能反弹回补。
 
-2. 彻底清理上一期开奖号码（严禁包含上一期开奖号）：
-   - 上一期（第 ${latestDraw.period} 期）实际开奖的 7 个号码为：[${latestDrawnNumbers.join(', ')}]
-   - ⚠️【绝对禁区】：在您预测的“不可能开出的6个号码”中，**必须彻底清理排除上一期实际开出的7个号码**，绝对不能包含这7个号码中的任何一个！
+2. 防止推荐重复（上一期排除重合限制）：
+   - 上一期已排除的6个号码是：[${lastPredictions.join(', ')}]
+   - ⚠️【限制】：确保本期的预测名单与上一期的 [${lastPredictions.join(', ')}] 不完全相同，让排除名单具有周期时效变化。
 
-3. 防止推荐重复（上一期排除重合限制）：
-   - 上一期已排除的6个推荐号码是：[${lastPredictions.join(', ')}]
-   - ⚠️【限制】：确保本期的预测名单与上一期的 [${lastPredictions.join(', ')}] 不完全相同。
-
-4. 遗漏与冷热对冲：
+3. 遗漏与冷热对冲：
    - 您应该评估 49 码的总体出现频次、近期遗漏周期，并结合混沌理论推演下一期（第 ${parseInt(latestDraw.period, 10) + 1} 期）最不可能出现的 6 个号码。
    - 重点考虑长期极度冷态、出现频次极低、或者近期遗漏处于极值不符合反弹走势的号码。
 
@@ -273,95 +199,102 @@ ${recordsText}
 {
   "predictedNumbers": [number, number, number, number, number, number],
   "reasoning": {
-    "triggerLocking": "根据隔期特征，讨论排除名单中对当前活跃追踪目标号 [${activeNumbers.join(', ')}] 及上一期实际开奖号 [${latestDrawnNumbers.join(', ')}] 执行的安全加锁与清理过程，使用极具专业度的中文描绘",
+    "triggerLocking": "根据隔期特征，讨论排除名单中对当前活跃追踪目标号 [${activeNumbers.join(', ')}] 执行的安全加锁与防回弹屏障过程，使用极具专业度的中文描绘",
     "edgeDeduction": "详细阐释首尾边缘环形运算下对高回补落点的绕道对冲策略，使用极具专业度的中文描绘",
     "omissionConclusion": "结合165期大盘冷态指标及遗漏波峰，全面推导论述此 6 个号码不可能出现的必然逻辑，使用极具专业度的中文描绘"
   }
 }`;
 
-  const fallbackLogs: string[] = [];
+    console.log('Requesting Gemini AI prediction...');
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            predictedNumbers: {
+              type: Type.ARRAY,
+              items: { type: Type.INTEGER },
+              description: '6 unique numbers from 1 to 49 that are least likely to appear',
+            },
+            reasoning: {
+              type: Type.OBJECT,
+              properties: {
+                triggerLocking: { type: Type.STRING },
+                edgeDeduction: { type: Type.STRING },
+                omissionConclusion: { type: Type.STRING },
+              },
+              required: ['triggerLocking', 'edgeDeduction', 'omissionConclusion'],
+            },
+          },
+          required: ['predictedNumbers', 'reasoning'],
+        },
+      },
+    });
 
-  // Iterate over models in the fallback chain
-  for (const modelName of MODEL_FALLBACK_CHAIN) {
-    try {
-      console.log(`[AI Engine] Invoking model: ${modelName}...`);
-      const response = await callGeminiWithTimeout(ai, modelName, prompt, 13000);
-      const textResult = response.text || '';
-      const body = JSON.parse(textResult.trim());
+    const textResult = response.text || '';
+    const body = JSON.parse(textResult.trim());
+    
+    // Validate the prediction bounds
+    let predicted = (body.predictedNumbers || [])
+      .map((n: any) => parseInt(n, 10))
+      .filter((n: number) => !isNaN(n) && n >= 1 && n <= 49);
+      
+    // Dedup and slice
+    predicted = Array.from(new Set(predicted)).slice(0, 6);
+    
+    // If invalid or less than 6, fallback to math prediction
+    if (predicted.length !== 6) {
+      console.error('Gemini generated invalid prediction length:', predicted);
+      return { ...mathPredict, isAIPowered: false };
+    }
 
-      // Validate the prediction bounds
-      let predicted = (body.predictedNumbers || [])
-        .map((n: any) => parseInt(n, 10))
-        .filter((n: number) => !isNaN(n) && n >= 1 && n <= 49);
+    predicted.sort((a, b) => a - b);
 
-      // Dedup and slice
-      predicted = Array.from(new Set(predicted)).slice(0, 6);
-
-      if (predicted.length !== 6) {
-        throw new Error(`Model returned ${predicted.length} valid numbers instead of 6`);
-      }
-
-      predicted.sort((a, b) => a - b);
-
-      // Make sure we did not include any active numbers or latest drawn numbers (彻底清理上一期开奖号)
-      const safePrediction: number[] = [];
-      for (const num of predicted) {
-        if (forbiddenNumbers.includes(num)) {
-          for (const replacement of mathPredict.predictedNumbers) {
-            if (!predicted.includes(replacement) && !forbiddenNumbers.includes(replacement) && !safePrediction.includes(replacement)) {
-              safePrediction.push(replacement);
-              break;
-            }
-          }
-        } else {
-          safePrediction.push(num);
-        }
-      }
-
-      // Fill up if somehow less than 6
-      while (safePrediction.length < 6) {
+    // Make sure we did not include any active numbers
+    const safePrediction: number[] = [];
+    for (const num of predicted) {
+      if (activeNumbers.includes(num)) {
+        // Swap with the mathematical safe suggestion
         for (const replacement of mathPredict.predictedNumbers) {
-          if (!safePrediction.includes(replacement) && !forbiddenNumbers.includes(replacement)) {
+          if (!predicted.includes(replacement) && !activeNumbers.includes(replacement) && !safePrediction.includes(replacement)) {
             safePrediction.push(replacement);
             break;
           }
         }
+      } else {
+        safePrediction.push(num);
       }
-
-      safePrediction.sort((a, b) => a - b);
-
-      console.log(`[AI Engine] Successfully generated prediction using ${modelName}`);
-      return {
-        predictedNumbers: safePrediction,
-        activeTargets: activeTargets,
-        reasoning: {
-          triggerLocking: body.reasoning?.triggerLocking || mathPredict.reasoning.triggerLocking,
-          edgeDeduction: body.reasoning?.edgeDeduction || mathPredict.reasoning.edgeDeduction,
-          omissionConclusion: body.reasoning?.omissionConclusion || mathPredict.reasoning.omissionConclusion,
-        },
-        isAIPowered: true,
-        modelUsed: modelName,
-        isFallback: modelName !== MODEL_FALLBACK_CHAIN[0],
-        fallbackLogs: fallbackLogs.length > 0 ? fallbackLogs : undefined,
-      };
-    } catch (err: any) {
-      const errMsg = `${modelName} 调用失败: ${err.message || '超时或异常'}`;
-      console.warn(`[AI Fallback Triggered] ${errMsg}`);
-      fallbackLogs.push(errMsg);
-      // Continue to next model in the fallback chain
     }
-  }
 
-  // If ALL models fail, gracefully return the mathematical hedge baseline (no infinite re-fetch)
-  console.warn('[AI Engine] All Gemini models failed or timed out. Gracefully activating mathematical hedge engine.');
-  return {
-    ...mathPredict,
-    isAIPowered: false,
-    modelUsed: '高精度数理对冲保底',
-    isFallback: true,
-    fallbackReason: `所有 AI 模型 (${MODEL_FALLBACK_CHAIN.join(', ')}) 响应超时或不可用，系统已安全切入高阶数理对冲保底`,
-    fallbackLogs,
-  };
+    // Fill up if somehow less than 6
+    while (safePrediction.length < 6) {
+      for (const replacement of mathPredict.predictedNumbers) {
+        if (!safePrediction.includes(replacement) && !activeNumbers.includes(replacement)) {
+          safePrediction.push(replacement);
+          break;
+        }
+      }
+    }
+
+    safePrediction.sort((a, b) => a - b);
+
+    return {
+      predictedNumbers: safePrediction,
+      activeTargets: activeTargets,
+      reasoning: {
+        triggerLocking: body.reasoning.triggerLocking || mathPredict.reasoning.triggerLocking,
+        edgeDeduction: body.reasoning.edgeDeduction || mathPredict.reasoning.edgeDeduction,
+        omissionConclusion: body.reasoning.omissionConclusion || mathPredict.reasoning.omissionConclusion,
+      },
+      isAIPowered: true,
+    };
+  } catch (err) {
+    console.error('Gemini prediction generation failed, gracefully falling back to math model:', err);
+    return { ...mathPredict, isAIPowered: false };
+  }
 }
 
 // 1. API: Get full analytical model
@@ -437,57 +370,7 @@ app.post('/api/refresh', async (req, res) => {
   }
 });
 
-// 3. API: Force Repredict with multi-model fallback (stops infinite loops)
-app.post('/api/repredict', async (req, res) => {
-  try {
-    const rawRecords = getRecords();
-    if (rawRecords.length === 0) {
-      return res.status(500).json({ status: 'error', message: 'No records available.' });
-    }
-    const analysis = analyzeData(rawRecords);
-    const lastPredictions = analysis.predictions.length > 0 
-      ? analysis.predictions[analysis.predictions.length - 1].predictedNumbers 
-      : [];
-    const currentPeriod = rawRecords[0]?.period || '';
-    
-    // Clear old cache and force re-run multi-model ladder
-    clearCachedPredictionFile();
-    const prediction = await getAIPrediction(rawRecords, analysis.triggers, lastPredictions);
-    savePredictionCache(currentPeriod, prediction);
-
-    res.json({
-      status: 'success',
-      prediction,
-      message: prediction.isAIPowered 
-        ? `成功通过 ${prediction.modelUsed} 生成最新排除预测` 
-        : (prediction.fallbackReason || 'AI 模型不可用，已安全启用高阶数理对冲保底'),
-    });
-  } catch (err: any) {
-    console.error('Repredict failed:', err);
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-});
-
-// 3.5 API: Force clean previous period prediction cache & reset
-app.all('/api/clear-cache', async (req, res) => {
-  try {
-    clearCachedPredictionFile();
-    const timestampPath = path.resolve('src/data/last_check.txt');
-    if (fs.existsSync(timestampPath)) {
-      try { fs.unlinkSync(timestampPath); } catch {}
-    }
-    console.log('[Cache] Previous period data and prediction cache purged.');
-    res.json({
-      status: 'success',
-      message: '上一期缓存及历史预测记录已彻底清除，下一次请求将重新计算并应用纯净数据。',
-    });
-  } catch (err: any) {
-    console.error('Clear cache error:', err);
-    res.status(500).json({ status: 'error', message: err.message || '清理失败' });
-  }
-});
-
-// 4. API: Generate smart AI explanation essay with multi-model fallback
+// 3. API: Generate smart AI explanation essay using @google/genai
 app.post('/api/ai-report', async (req, res) => {
   try {
     const { prediction, summary, latestDraw } = req.body;
@@ -509,7 +392,7 @@ app.post('/api/ai-report', async (req, res) => {
 - **追逐补位高发效率 (1-4期)**：${summary?.hitRate1To4 ? (summary.hitRate1To4 * 100).toFixed(1) : '100'}%
 - **专家排除算法准确度 (6码完全排除)**：${summary?.exclusionSuccessRate ? (summary.exclusionSuccessRate * 100).toFixed(1) : '85'}%
 
-*(提示：系统已内置 Gemini 3.8 Flash ➔ 3.5 ➔ 3.1-Lite 多级备用链路，配置密钥后可自适应切换！)*`,
+*(提示：若要激活深度AI演译和高级趋势报告，请至 AI Studio 的 Secrets 管理区配置有效的 GEMINI_API_KEY 后，即可享受全自动的数学+AI混合预测报告！)*`,
       });
     }
 
@@ -552,43 +435,12 @@ app.post('/api/ai-report', async (req, res) => {
 
 字数要求在800字左右，语气要理性、冷静、充满高净值学者风范。必须使用 Markdown 格式输出，文字排版优雅精美。不要使用废话，直奔主题。`;
 
-    // Try fallback chain for report generation as well
-    for (const modelName of MODEL_FALLBACK_CHAIN) {
-      try {
-        console.log(`[AI Report] Attempting report generation with ${modelName}...`);
-        let timer: any;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`Report model ${modelName} timeout`)), 14000);
-        });
-        const reportPromise = ai.models.generateContent({
-          model: modelName,
-          contents: prompt,
-        });
-        const response: any = await Promise.race([reportPromise, timeoutPromise]);
-        clearTimeout(timer);
-        if (response.text) {
-          return res.json({ content: response.text });
-        }
-      } catch (err: any) {
-        console.warn(`[AI Report Fallback] ${modelName} failed: ${err.message}. Trying next model...`);
-      }
-    }
-
-    // Fallback if all models fail
-    res.json({
-      content: `### 🤖 高精度数理逻辑推演深度评估 (模型回退保底)
-
-由于当前所有 AI 远程模型响应繁忙或网络限制，系统已自动启用高阶离线推演数学引擎生成分析报告。
-
-#### 一、触发特征与号码锁定
-本系统基于隔期同号理论，对近期大盘走势进行了全量拓扑特征分析。当前模型扫描到 **${summary?.totalTriggers || 0}** 次历史轨迹触发事件，在基准位回补机制下，1-4期高发命中效率达到 **${summary?.hitRate1To4 ? (summary.hitRate1To4 * 100).toFixed(1) : '100'}%**。系统已自动对处于追回周期的活跃号码执行绝对加锁屏蔽，确保排除集合中绝不包含任何高能级活跃号。
-
-#### 二、边缘算法与路径推演
-基于首尾边缘环形跳跃算子，当基准位处于边缘（第1名与第7名）时，算法执行回折对冲运算。本期排除的 6 个号码 **[${numShow}]** 均成功绕行高能落点区，契合大盘阻抗分布。
-
-#### 三、遗漏分析与排除结论
-结合全量 49 码的长期冷热频次与遗漏波峰，号码 **[${numShow}]** 处于动力学衰减区间，在第 ${(parseInt(latestDraw?.period || '0', 10) + 1)} 期中涌现概率极低，维持极高安全边际。`,
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: prompt,
     });
+
+    res.json({ content: response.text });
   } catch (err: any) {
     console.error('Gemini API call failed:', err);
     res.status(500).json({ error: 'Gemini reports error: ' + err.message });

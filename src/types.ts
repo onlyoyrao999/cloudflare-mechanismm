@@ -56,10 +56,6 @@ export interface PredictionResult {
     omissionConclusion: string;
   };
   isAIPowered?: boolean;
-  modelUsed?: string;
-  isFallback?: boolean;
-  fallbackReason?: string;
-  fallbackLogs?: string[];
 }
 
 export interface AnalyzeAPIResponse {
