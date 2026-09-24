@@ -269,6 +269,10 @@ export function analyzeData(rawRecords: DrawRecord[]): {
       // RULE 2: Exclude previous period's recommendations (严禁推荐上一期推荐过的号码)
       if (prevPrediction.includes(num)) continue;
 
+      // RULE 3: Exclude previous draw numbers (彻底清理上一期实际开奖号码)
+      const prevDrawNumbers = recordsAsc[idx - 1]?.numbers || [];
+      if (prevDrawNumbers.includes(num)) continue;
+
       // Score the likelihood. We want cold numbers (lowest frequencies, highest omission)
       // Score = Frequency * 10 - Omission * 0.1
       // Lowest score is most suitable for EXCLUSION ("least likely to appear")
@@ -425,14 +429,18 @@ export function predictNextDraw(
 
   // C. Calculate candidate scores
   const activeNumbers = activeTargets.map(t => t.number);
+  const latestDrawnNumbers = latestRecord ? latestRecord.numbers : [];
   const candidates: { num: number; score: number; freq: number; omission: number }[] = [];
 
   for (let num = 1; num <= 49; num++) {
-    // RULE 1: Hedge (对冲)
+    // RULE 1: Hedge (对冲活跃追踪号)
     if (activeNumbers.includes(num)) continue;
 
-    // RULE 2: Exclude last predictions
+    // RULE 2: Exclude last predictions (彻底清理上一期推荐过的排除号码)
     if (lastPredictions.includes(num)) continue;
+
+    // RULE 3: Exclude last draw numbers (彻底清理上一期实际开奖的7个号码，严禁滞留)
+    if (latestDrawnNumbers.includes(num)) continue;
 
     // Score = Freq * 100 - Omission
     // Coldest (lowest score) takes priority

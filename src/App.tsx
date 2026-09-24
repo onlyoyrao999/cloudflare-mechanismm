@@ -644,13 +644,14 @@ export default function App() {
                         新一期极低概率（排除） 6 个号码
                       </h2>
                       {prediction.isAIPowered ? (
-                        <span className="text-[10.5px] bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-2 py-0.5 rounded-full font-medium flex items-center gap-1 shadow-sm">
-                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                          Gemini 3.5 智能预测
+                        <span className="text-[10.5px] bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1.5 shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Gemini 深度AI模型已接入
                         </span>
                       ) : (
-                        <span className="text-[10.5px] bg-slate-950 border border-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-medium">
-                          高精度数理对冲运算
+                        <span className="text-[10.5px] bg-amber-500/10 border border-amber-500/30 text-amber-300 px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                          数理对冲运算（离线降级）
                         </span>
                       )}
                     </div>

@@ -17,7 +17,7 @@ function getCachedPrediction(currentPeriod: string) {
     if (fs.existsSync(cacheFilePath)) {
       const data = fs.readFileSync(cacheFilePath, 'utf8');
       const parsed = JSON.parse(data);
-      if (parsed && parsed.period === currentPeriod) {
+      if (parsed && parsed.period === currentPeriod && parsed.prediction?.isAIPowered) {
         return parsed.prediction;
       }
     }
@@ -206,36 +206,55 @@ ${recordsText}
 }`;
 
     console.log('Requesting Gemini AI prediction...');
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            predictedNumbers: {
-              type: Type.ARRAY,
-              items: { type: Type.INTEGER },
-              description: '6 unique numbers from 1 to 49 that are least likely to appear',
-            },
-            reasoning: {
+    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+    let responseText = '';
+    let usedModel = '';
+
+    for (const model of candidateModels) {
+      try {
+        console.log(`Attempting prediction with model: ${model}`);
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
               type: Type.OBJECT,
               properties: {
-                triggerLocking: { type: Type.STRING },
-                edgeDeduction: { type: Type.STRING },
-                omissionConclusion: { type: Type.STRING },
+                predictedNumbers: {
+                  type: Type.ARRAY,
+                  items: { type: Type.INTEGER },
+                  description: '6 unique numbers from 1 to 49 that are least likely to appear',
+                },
+                reasoning: {
+                  type: Type.OBJECT,
+                  properties: {
+                    triggerLocking: { type: Type.STRING },
+                    edgeDeduction: { type: Type.STRING },
+                    omissionConclusion: { type: Type.STRING },
+                  },
+                  required: ['triggerLocking', 'edgeDeduction', 'omissionConclusion'],
+                },
               },
-              required: ['triggerLocking', 'edgeDeduction', 'omissionConclusion'],
+              required: ['predictedNumbers', 'reasoning'],
             },
           },
-          required: ['predictedNumbers', 'reasoning'],
-        },
-      },
-    });
+        });
+        if (response.text) {
+          responseText = response.text;
+          usedModel = model;
+          break;
+        }
+      } catch (modelErr: any) {
+        console.warn(`Model ${model} failed (${modelErr.message}), trying next candidate...`);
+      }
+    }
 
-    const textResult = response.text || '';
-    const body = JSON.parse(textResult.trim());
+    if (!responseText) {
+      throw new Error('All Gemini model candidates failed to generate prediction.');
+    }
+
+    const body = JSON.parse(responseText.trim());
     
     // Validate the prediction bounds
     let predicted = (body.predictedNumbers || [])
@@ -435,12 +454,28 @@ app.post('/api/ai-report', async (req, res) => {
 
 字数要求在800字左右，语气要理性、冷静、充满高净值学者风范。必须使用 Markdown 格式输出，文字排版优雅精美。不要使用废话，直奔主题。`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
-      contents: prompt,
-    });
+    let reportContent = '';
+    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+    for (const model of candidateModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+        });
+        if (response.text) {
+          reportContent = response.text;
+          break;
+        }
+      } catch (err: any) {
+        console.warn(`Report generation with ${model} failed (${err.message}), trying next...`);
+      }
+    }
 
-    res.json({ content: response.text });
+    if (!reportContent) {
+      throw new Error('All Gemini model candidates failed to generate report.');
+    }
+
+    res.json({ content: reportContent });
   } catch (err: any) {
     console.error('Gemini API call failed:', err);
     res.status(500).json({ error: 'Gemini reports error: ' + err.message });

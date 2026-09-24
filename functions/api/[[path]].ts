@@ -41,13 +41,13 @@ async function saveRecords(records: any[], env: Env) {
 }
 
 async function getCachedPrediction(period: string, env: Env) {
-  if (memoryCache && memoryCache.period === period) {
+  if (memoryCache && memoryCache.period === period && memoryCache.prediction?.isAIPowered) {
     return memoryCache.prediction;
   }
   if (env.LOTTERY_KV) {
     try {
       const stored = await env.LOTTERY_KV.get(`PREDICTION_CACHE_${period}`, { type: 'json' });
-      if (stored) {
+      if (stored && stored.isAIPowered) {
         return stored;
       }
     } catch (e) {
@@ -190,45 +190,59 @@ ${recordsText}
   }
 }`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'OBJECT',
-            properties: {
-              predictedNumbers: {
-                type: 'ARRAY',
-                items: { type: 'INTEGER' },
-                description: '6 unique numbers from 1 to 49 that are least likely to appear',
-              },
-              reasoning: {
+    let responseData: any = null;
+    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash'];
+
+    for (const model of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: {
                 type: 'OBJECT',
                 properties: {
-                  triggerLocking: { type: 'STRING' },
-                  edgeDeduction: { type: 'STRING' },
-                  omissionConclusion: { type: 'STRING' },
+                  predictedNumbers: {
+                    type: 'ARRAY',
+                    items: { type: 'INTEGER' },
+                    description: '6 unique numbers from 1 to 49 that are least likely to appear',
+                  },
+                  reasoning: {
+                    type: 'OBJECT',
+                    properties: {
+                      triggerLocking: { type: 'STRING' },
+                      edgeDeduction: { type: 'STRING' },
+                      omissionConclusion: { type: 'STRING' },
+                    },
+                    required: ['triggerLocking', 'edgeDeduction', 'omissionConclusion'],
+                  },
                 },
-                required: ['triggerLocking', 'edgeDeduction', 'omissionConclusion'],
+                required: ['predictedNumbers', 'reasoning'],
               },
             },
-            required: ['predictedNumbers', 'reasoning'],
-          },
-        },
-      }),
-    });
+          }),
+        });
 
-    if (!response.ok) {
-      console.error('Gemini API call returned non-200:', await response.text());
+        if (response.ok) {
+          responseData = await response.json();
+          break;
+        } else {
+          console.warn(`Model ${model} returned non-200:`, await response.text());
+        }
+      } catch (e: any) {
+        console.warn(`Model ${model} fetch error:`, e.message);
+      }
+    }
+
+    if (!responseData) {
       return { ...mathPredict, isAIPowered: false };
     }
 
-    const data = await response.json();
-    const textResult = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const textResult = responseData.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const body = JSON.parse(textResult.trim());
 
     let predicted = (body.predictedNumbers || [])
@@ -419,25 +433,36 @@ export const onRequest = async (context: { request: Request; env: Env }) => {
 
 字数要求在800字左右，语气要理性、冷静、充满高净值学者风范。必须使用 Markdown 格式输出，文字排版优雅精美。不要使用废话，直奔主题。`;
 
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
-      const geminiRes = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-        }),
-      });
+      let content = '';
+      const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash'];
+      for (const model of candidateModels) {
+        try {
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+          const geminiRes = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+            }),
+          });
 
-      if (!geminiRes.ok) {
-        const errText = await geminiRes.text();
-        return new Response(JSON.stringify({ error: 'Gemini API call failed: ' + errText }), {
+          if (geminiRes.ok) {
+            const geminiData = await geminiRes.json();
+            content = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (content) break;
+          }
+        } catch (e: any) {
+          console.warn(`ai-report with ${model} failed:`, e.message);
+        }
+      }
+
+      if (!content) {
+        return new Response(JSON.stringify({ error: 'Gemini API call failed with all candidate models.' }), {
           status: 500,
           headers: corsHeaders,
         });
       }
 
-      const geminiData = await geminiRes.json();
-      const content = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
       return new Response(JSON.stringify({ content }), { headers: corsHeaders });
     }
 
