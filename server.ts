@@ -206,7 +206,7 @@ ${recordsText}
 }`;
 
     console.log('Requesting Gemini AI prediction...');
-    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+    const candidateModels = ['gemini-2.5-flash', 'gemini-3.8-flash'];
     let responseText = '';
     let usedModel = '';
 
@@ -455,7 +455,7 @@ app.post('/api/ai-report', async (req, res) => {
 字数要求在800字左右，语气要理性、冷静、充满高净值学者风范。必须使用 Markdown 格式输出，文字排版优雅精美。不要使用废话，直奔主题。`;
 
     let reportContent = '';
-    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+    const candidateModels = ['gemini-2.5-flash', 'gemini-3.8-flash'];
     for (const model of candidateModels) {
       try {
         const response = await ai.models.generateContent({

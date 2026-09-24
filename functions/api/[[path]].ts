@@ -191,11 +191,15 @@ ${recordsText}
 }`;
 
     let responseData: any = null;
-    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash'];
+    const configs = [
+      { version: 'v1beta', model: 'gemini-2.5-flash' },
+      { version: 'v1', model: 'gemini-2.5-flash' },
+      { version: 'v1beta', model: 'gemini-3.8-flash' },
+    ];
 
-    for (const model of candidateModels) {
+    for (const cfg of configs) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/${cfg.version}/models/${cfg.model}:generateContent?key=${apiKey}`;
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -231,10 +235,10 @@ ${recordsText}
           responseData = await response.json();
           break;
         } else {
-          console.warn(`Model ${model} returned non-200:`, await response.text());
+          console.warn(`Model ${cfg.model} (${cfg.version}) returned status ${response.status}`);
         }
       } catch (e: any) {
-        console.warn(`Model ${model} fetch error:`, e.message);
+        console.warn(`Model ${cfg.model} (${cfg.version}) fetch error:`, e.message);
       }
     }
 
@@ -434,10 +438,14 @@ export const onRequest = async (context: { request: Request; env: Env }) => {
 字数要求在800字左右，语气要理性、冷静、充满高净值学者风范。必须使用 Markdown 格式输出，文字排版优雅精美。不要使用废话，直奔主题。`;
 
       let content = '';
-      const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash'];
-      for (const model of candidateModels) {
+      const configs = [
+        { version: 'v1beta', model: 'gemini-2.5-flash' },
+        { version: 'v1', model: 'gemini-2.5-flash' },
+        { version: 'v1beta', model: 'gemini-3.8-flash' },
+      ];
+      for (const cfg of configs) {
         try {
-          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+          const apiUrl = `https://generativelanguage.googleapis.com/${cfg.version}/models/${cfg.model}:generateContent?key=${env.GEMINI_API_KEY}`;
           const geminiRes = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -452,7 +460,7 @@ export const onRequest = async (context: { request: Request; env: Env }) => {
             if (content) break;
           }
         } catch (e: any) {
-          console.warn(`ai-report with ${model} failed:`, e.message);
+          console.warn(`ai-report with ${cfg.model} (${cfg.version}) failed:`, e.message);
         }
       }
 
