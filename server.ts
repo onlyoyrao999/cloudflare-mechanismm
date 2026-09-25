@@ -1,515 +1,72 @@
-// server.ts
-import express from 'express';
-import path from 'path';
-import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
-import { analyzeData, predictNextDraw } from './src/data/analyzer.js';
-import { GoogleGenAI, Type } from '@google/genai';
+var __defProp=Object.defineProperty;var __name=(target,value)=>__defProp(target,"name",{value,configurable:true});import express from"express";import path from"path";import fs from"fs";import{createServer as createViteServer}from"vite";import{analyzeData,predictNextDraw}from"./src/data/analyzer.js";import{GoogleGenAI,Type}from"@google/genai";const app=express();const PORT=3e3;const cacheFilePath=path.resolve("src/data/prediction_cache.json");function getCachedPrediction(currentPeriod){try{if(fs.existsSync(cacheFilePath)){const data=fs.readFileSync(cacheFilePath,"utf8");const parsed=JSON.parse(data);if(parsed&&parsed.period===currentPeriod){if(parsed.prediction?.isAIPowered){return parsed.prediction}if(parsed.timestamp&&Date.now()-parsed.timestamp<120*1e3){return parsed.prediction}}}}catch(error){console.error("Error reading prediction cache path:",error)}return null}__name(getCachedPrediction,"getCachedPrediction");function savePredictionCache(period,prediction){try{const dir=path.dirname(cacheFilePath);if(!fs.existsSync(dir)){fs.mkdirSync(dir,{recursive:true})}fs.writeFileSync(cacheFilePath,JSON.stringify({period,prediction,timestamp:Date.now()},null,2),"utf8")}catch(error){console.error("Error saving prediction cache:",error)}}__name(savePredictionCache,"savePredictionCache");function clearCachedPredictionFile(){try{if(fs.existsSync(cacheFilePath)){fs.unlinkSync(cacheFilePath)}}catch(error){console.error("Error clearing prediction cache file:",error)}}__name(clearCachedPredictionFile,"clearCachedPredictionFile");app.use(express.json());const historyFilePath=path.resolve("src/data/history.json");function getRecords(){try{if(fs.existsSync(historyFilePath)){const data=fs.readFileSync(historyFilePath,"utf8");return JSON.parse(data)}}catch(error){console.error("Error reading history file:",error)}return[]}__name(getRecords,"getRecords");function saveRecords(records){try{const dir=path.dirname(historyFilePath);if(!fs.existsSync(dir)){fs.mkdirSync(dir,{recursive:true})}fs.writeFileSync(historyFilePath,JSON.stringify(records,null,2),"utf8")}catch(error){console.error("Error saving history file:",error)}}__name(saveRecords,"saveRecords");async function scrapeLatest(){try{const url="https://macaujc.ddcdn.cloudns.org/";const res=await fetch(url);if(!res.ok){throw new Error(`HTTP error! status: ${res.status}`)}const text=await res.text();const lines=text.split("\n");const recordsMap=new Map;const existing=getRecords();for(const r of existing){recordsMap.set(r.period,r.numbers)}let addedCount=0;for(const line of lines){const trimmed=line.trim();if(!trimmed)continue;const match=trimmed.match(/^(\d+):\s*\[(.*?)\]/);if(match){const period=match[1];const numsStr=match[2];const numbers=numsStr.split(",").map(n=>parseInt(n.trim(),10)).filter(n=>!isNaN(n));if(numbers.length>0){if(!recordsMap.has(period)){addedCount++}recordsMap.set(period,numbers)}}}const mergedList=Array.from(recordsMap.entries()).map(([period,numbers])=>({period,numbers}));mergedList.sort((a,b)=>b.period.localeCompare(a.period));saveRecords(mergedList);return{success:true,count:mergedList.length,message:addedCount>0?`Successfully integrated ${addedCount} new drawing records.`:"Data is already up to date."}}catch(err){console.error("Background scrape failed:",err);return{success:false,count:0,message:`Failed to fetch live data: ${err.message}. Showing cached results.`}}}__name(scrapeLatest,"scrapeLatest");async function getAIPrediction(rawRecords,triggers,lastPredictions){const latestDraw=rawRecords[0];const mathPredict=predictNextDraw(rawRecords,triggers,lastPredictions);const activeTargets=mathPredict.activeTargets;const activeNumbers=activeTargets.map(t=>t.number);if(!process.env.GEMINI_API_KEY){console.log("No GEMINI_API_KEY. Using mathematical fallback prediction.");return{...mathPredict,isAIPowered:false}}try{const ai=new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY,httpOptions:{apiVersion:"v1",headers:{"User-Agent":"aistudio-build"}}});const recordsText=rawRecords.slice(0,165).map(r=>`${r.period}: [${r.numbers.join(",")}]`).join("\n");const prompt=`\u60A8\u662F\u4E00\u4F4D\u9AD8\u7B49\u6982\u7387\u8BBA\u4E13\u5BB6\u548C\u8D5B\u9A6C\u5F69\u7968\u6DF7\u6C8C\u5B66\u5B66\u8005\u3002
+\u73B0\u5728\u6211\u4EEC\u5C06\u5411\u60A8\u63D0\u4F9B\u6FB3\u95E8\u8D5B\u9A6C\u4F1A\u6700\u8FD1\u7684 165 \u671F\u5F00\u5956\u5386\u53F2\u6570\u636E\u3002\u6BCF\u4E00\u671F\u5305\u542B 7 \u4E2A\u5F00\u5956\u53F7\u7801\uFF08\u8303\u56F4\u4ECE 01 \u5230 49\uFF09\u3002
 
-const app = express();
-const PORT = 3000;
+\u3010\u91CD\u8981\u5206\u6790\u7406\u8BBA\u4E0E\u5BF9\u51B2\u89C4\u5219\u3011\uFF1A
+1. \u9694\u671F\u540C\u53F7\u8F68\u8FF9\uFF08Hedge \u5BF9\u51B2\u9632\u7EBF\uFF09\uFF1A\u5F53\u524D\u6709\u4E9B\u53F7\u7801\u6B63\u5904\u4E8E\u6D3B\u8DC3\u7684\u8F68\u8FF9\u8FFD\u9010\u5468\u671F\u4E2D\u3002\u8FD9\u4E9B\u53F7\u7801\u5728\u63A5\u4E0B\u6765\u7684\u5F00\u5956\u4E2D\u51FA\u73B0\u6982\u7387\u6781\u9AD8\u3002
+   - \u5904\u4E8E\u8FFD\u9010\u5468\u671F\u4E2D\u7684\u6D3B\u8DC3\u76EE\u6807\u53F7\uFF1A[${activeNumbers.join(", ")}]
+   - \u26A0\uFE0F\u3010\u7EDD\u5BF9\u7981\u533A\u3011\uFF1A\u5728\u60A8\u9884\u6D4B\u7684\u201C\u4E0D\u53EF\u80FD\u5F00\u51FA\u76846\u4E2A\u53F7\u7801\u201D\u4E2D\uFF0C**\u7EDD\u5BF9\u4E0D\u80FD**\u5305\u542B\u8FD9\u51E0\u4E2A\u6D3B\u8DC3\u76EE\u6807\u53F7\u7801\uFF01\u56E0\u4E3A\u5B83\u4EEC\u968F\u65F6\u53EF\u80FD\u53CD\u5F39\u56DE\u8865\u3002
 
-// Prediction cache to avoid excessive API requests
-const cacheFilePath = path.resolve('src/data/prediction_cache.json');
+2. \u9632\u6B62\u63A8\u8350\u91CD\u590D\uFF08\u4E0A\u4E00\u671F\u6392\u9664\u91CD\u5408\u9650\u5236\uFF09\uFF1A
+   - \u4E0A\u4E00\u671F\u5DF2\u6392\u9664\u76846\u4E2A\u53F7\u7801\u662F\uFF1A[${lastPredictions.join(", ")}]
+   - \u26A0\uFE0F\u3010\u9650\u5236\u3011\uFF1A\u786E\u4FDD\u672C\u671F\u7684\u9884\u6D4B\u540D\u5355\u4E0E\u4E0A\u4E00\u671F\u7684 [${lastPredictions.join(", ")}] \u4E0D\u5B8C\u5168\u76F8\u540C\uFF0C\u8BA9\u6392\u9664\u540D\u5355\u5177\u6709\u5468\u671F\u65F6\u6548\u53D8\u5316\u3002
 
-function getCachedPrediction(currentPeriod: string) {
-  try {
-    if (fs.existsSync(cacheFilePath)) {
-      const data = fs.readFileSync(cacheFilePath, 'utf8');
-      const parsed = JSON.parse(data);
-      if (parsed && parsed.period === currentPeriod) {
-        // If successfully generated by AI, cache for the entire period
-        if (parsed.prediction?.isAIPowered) {
-          return parsed.prediction;
-        }
-        // If it was a math fallback due to temporary quota limits, cool down for 2 minutes before re-attempting
-        if (parsed.timestamp && Date.now() - parsed.timestamp < 120 * 1000) {
-          return parsed.prediction;
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error reading prediction cache path:', error);
-  }
-  return null;
-}
+3. \u9057\u6F0F\u4E0E\u51B7\u70ED\u5BF9\u51B2\uFF1A
+   - \u60A8\u5E94\u8BE5\u8BC4\u4F30 49 \u7801\u7684\u603B\u4F53\u51FA\u73B0\u9891\u6B21\u3001\u8FD1\u671F\u9057\u6F0F\u5468\u671F\uFF0C\u5E76\u7ED3\u5408\u6DF7\u6C8C\u7406\u8BBA\u63A8\u6F14\u4E0B\u4E00\u671F\uFF08\u7B2C ${parseInt(latestDraw.period,10)+1} \u671F\uFF09\u6700\u4E0D\u53EF\u80FD\u51FA\u73B0\u7684 6 \u4E2A\u53F7\u7801\u3002
+   - \u91CD\u70B9\u8003\u8651\u957F\u671F\u6781\u5EA6\u51B7\u6001\u3001\u51FA\u73B0\u9891\u6B21\u6781\u4F4E\u3001\u6216\u8005\u8FD1\u671F\u9057\u6F0F\u5904\u4E8E\u6781\u503C\u4E0D\u7B26\u5408\u53CD\u5F39\u8D70\u52BF\u7684\u53F7\u7801\u3002
 
-function savePredictionCache(period: string, prediction: any) {
-  try {
-    const dir = path.dirname(cacheFilePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(cacheFilePath, JSON.stringify({ period, prediction, timestamp: Date.now() }, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error saving prediction cache:', error);
-  }
-}
-
-function clearCachedPredictionFile() {
-  try {
-    if (fs.existsSync(cacheFilePath)) {
-      fs.unlinkSync(cacheFilePath);
-    }
-  } catch (error) {
-    console.error('Error clearing prediction cache file:', error);
-  }
-}
-
-
-app.use(express.json());
-
-// Path to data file
-const historyFilePath = path.resolve('src/data/history.json');
-
-// Ensure history file directory exists and has a baseline
-function getRecords() {
-  try {
-    if (fs.existsSync(historyFilePath)) {
-      const data = fs.readFileSync(historyFilePath, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error reading history file:', error);
-  }
-  return [];
-}
-
-function saveRecords(records: any[]) {
-  try {
-    const dir = path.dirname(historyFilePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(historyFilePath, JSON.stringify(records, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error saving history file:', error);
-  }
-}
-
-// Scrape helper
-async function scrapeLatest(): Promise<{ success: boolean; count: number; message: string }> {
-  try {
-    const url = 'https://macaujc.ddcdn.cloudns.org/';
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
-    }
-    const text = await res.text();
-    const lines = text.split('\n');
-    const recordsMap = new Map<string, number[]>();
-
-    // Load existing records first to merge
-    const existing = getRecords();
-    for (const r of existing) {
-      recordsMap.set(r.period, r.numbers);
-    }
-
-    let addedCount = 0;
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      // Format: "2026165: [11,47,09,49,02,01,03]" or similar
-      const match = trimmed.match(/^(\d+):\s*\[(.*?)\]/);
-      if (match) {
-        const period = match[1];
-        const numsStr = match[2];
-        const numbers = numsStr.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n));
-        if (numbers.length > 0) {
-          if (!recordsMap.has(period)) {
-            addedCount++;
-          }
-          recordsMap.set(period, numbers);
-        }
-      }
-    }
-
-    // Convert map to list and sort descending
-    const mergedList = Array.from(recordsMap.entries()).map(([period, numbers]) => ({
-      period,
-      numbers,
-    }));
-    mergedList.sort((a, b) => b.period.localeCompare(a.period));
-
-    saveRecords(mergedList);
-    return {
-      success: true,
-      count: mergedList.length,
-      message: addedCount > 0 ? `Successfully integrated ${addedCount} new drawing records.` : 'Data is already up to date.',
-    };
-  } catch (err: any) {
-    console.error('Background scrape failed:', err);
-    return {
-      success: false,
-      count: 0,
-      message: `Failed to fetch live data: ${err.message}. Showing cached results.`,
-    };
-  }
-}
-
-/**
- * Perform predictive analysis using Gemini 3.5-flash with structural JSON guidance
- */
-async function getAIPrediction(
-  rawRecords: any[],
-  triggers: any[],
-  lastPredictions: number[]
-): Promise<any> {
-  const latestDraw = rawRecords[0];
-  const mathPredict = predictNextDraw(rawRecords, triggers, lastPredictions);
-  const activeTargets = mathPredict.activeTargets;
-  const activeNumbers = activeTargets.map((t: any) => t.number);
-
-  if (!process.env.GEMINI_API_KEY) {
-    console.log('No GEMINI_API_KEY. Using mathematical fallback prediction.');
-    return { ...mathPredict, isAIPowered: false };
-  }
-
-  try {
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: {
-        apiVersion: 'v1',
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-
-    // Provide the 165 lottery periods as statistical text context
-    const recordsText = rawRecords
-      .slice(0, 165)
-      .map((r) => `${r.period}: [${r.numbers.join(',')}]`)
-      .join('\n');
-
-    const prompt = `您是一位高等概率论专家和赛马彩票混沌学学者。
-现在我们将向您提供澳门赛马会最近的 165 期开奖历史数据。每一期包含 7 个开奖号码（范围从 01 到 49）。
-
-【重要分析理论与对冲规则】：
-1. 隔期同号轨迹（Hedge 对冲防线）：当前有些号码正处于活跃的轨迹追逐周期中。这些号码在接下来的开奖中出现概率极高。
-   - 处于追逐周期中的活跃目标号：[${activeNumbers.join(', ')}]
-   - ⚠️【绝对禁区】：在您预测的“不可能开出的6个号码”中，**绝对不能**包含这几个活跃目标号码！因为它们随时可能反弹回补。
-
-2. 防止推荐重复（上一期排除重合限制）：
-   - 上一期已排除的6个号码是：[${lastPredictions.join(', ')}]
-   - ⚠️【限制】：确保本期的预测名单与上一期的 [${lastPredictions.join(', ')}] 不完全相同，让排除名单具有周期时效变化。
-
-3. 遗漏与冷热对冲：
-   - 您应该评估 49 码的总体出现频次、近期遗漏周期，并结合混沌理论推演下一期（第 ${parseInt(latestDraw.period, 10) + 1} 期）最不可能出现的 6 个号码。
-   - 重点考虑长期极度冷态、出现频次极低、或者近期遗漏处于极值不符合反弹走势的号码。
-
-以下是前面165期开奖数据（最新期在最上面）：
+\u4EE5\u4E0B\u662F\u524D\u9762165\u671F\u5F00\u5956\u6570\u636E\uFF08\u6700\u65B0\u671F\u5728\u6700\u4E0A\u9762\uFF09\uFF1A
 ${recordsText}
 
-请在进行高精度数理逻辑推演后，计算出下一期最不可能出现的6个号码（范围为 1 到 49，必须是 6 个互不相同的整数，按升序排列）。
+\u8BF7\u5728\u8FDB\u884C\u9AD8\u7CBE\u5EA6\u6570\u7406\u903B\u8F91\u63A8\u6F14\u540E\uFF0C\u8BA1\u7B97\u51FA\u4E0B\u4E00\u671F\u6700\u4E0D\u53EF\u80FD\u51FA\u73B0\u76846\u4E2A\u53F7\u7801\uFF08\u8303\u56F4\u4E3A 1 \u5230 49\uFF0C\u5FC5\u987B\u662F 6 \u4E2A\u4E92\u4E0D\u76F8\u540C\u7684\u6574\u6570\uFF0C\u6309\u5347\u5E8F\u6392\u5217\uFF09\u3002
 
-您必须返回符合以下 JSON 结构的预测：
+\u60A8\u5FC5\u987B\u8FD4\u56DE\u7B26\u5408\u4EE5\u4E0B JSON \u7ED3\u6784\u7684\u9884\u6D4B\uFF1A
 {
   "predictedNumbers": [number, number, number, number, number, number],
   "reasoning": {
-    "triggerLocking": "根据隔期特征，讨论排除名单中对当前活跃追踪目标号 [${activeNumbers.join(', ')}] 执行的安全加锁与防回弹屏障过程，使用极具专业度的中文描绘",
-    "edgeDeduction": "详细阐释首尾边缘环形运算下对高回补落点的绕道对冲策略，使用极具专业度的中文描绘",
-    "omissionConclusion": "结合165期大盘冷态指标及遗漏波峰，全面推导论述此 6 个号码不可能出现的必然逻辑，使用极具专业度的中文描绘"
+    "triggerLocking": "\u6839\u636E\u9694\u671F\u7279\u5F81\uFF0C\u8BA8\u8BBA\u6392\u9664\u540D\u5355\u4E2D\u5BF9\u5F53\u524D\u6D3B\u8DC3\u8FFD\u8E2A\u76EE\u6807\u53F7 [${activeNumbers.join(", ")}] \u6267\u884C\u7684\u5B89\u5168\u52A0\u9501\u4E0E\u9632\u56DE\u5F39\u5C4F\u969C\u8FC7\u7A0B\uFF0C\u4F7F\u7528\u6781\u5177\u4E13\u4E1A\u5EA6\u7684\u4E2D\u6587\u63CF\u7ED8",
+    "edgeDeduction": "\u8BE6\u7EC6\u9610\u91CA\u9996\u5C3E\u8FB9\u7F18\u73AF\u5F62\u8FD0\u7B97\u4E0B\u5BF9\u9AD8\u56DE\u8865\u843D\u70B9\u7684\u7ED5\u9053\u5BF9\u51B2\u7B56\u7565\uFF0C\u4F7F\u7528\u6781\u5177\u4E13\u4E1A\u5EA6\u7684\u4E2D\u6587\u63CF\u7ED8",
+    "omissionConclusion": "\u7ED3\u5408165\u671F\u5927\u76D8\u51B7\u6001\u6307\u6807\u53CA\u9057\u6F0F\u6CE2\u5CF0\uFF0C\u5168\u9762\u63A8\u5BFC\u8BBA\u8FF0\u6B64 6 \u4E2A\u53F7\u7801\u4E0D\u53EF\u80FD\u51FA\u73B0\u7684\u5FC5\u7136\u903B\u8F91\uFF0C\u4F7F\u7528\u6781\u5177\u4E13\u4E1A\u5EA6\u7684\u4E2D\u6587\u63CF\u7ED8"
   }
-}`;
+}`;console.log("Requesting Gemini AI prediction...");const candidateModels=["gemini-2.5-flash","gemini-3.8-flash"];let responseText="";let usedModel="";for(const model of candidateModels){try{console.log(`Attempting prediction with model: ${model}`);const response=await ai.models.generateContent({model,contents:prompt,config:{responseMimeType:"application/json",responseSchema:{type:Type.OBJECT,properties:{predictedNumbers:{type:Type.ARRAY,items:{type:Type.INTEGER},description:"6 unique numbers from 1 to 49 that are least likely to appear"},reasoning:{type:Type.OBJECT,properties:{triggerLocking:{type:Type.STRING},edgeDeduction:{type:Type.STRING},omissionConclusion:{type:Type.STRING}},required:["triggerLocking","edgeDeduction","omissionConclusion"]}},required:["predictedNumbers","reasoning"]}}});if(response.text){responseText=response.text;usedModel=model;break}}catch(modelErr){console.warn(`Model ${model} failed (${modelErr.message}), trying next candidate...`)}}if(!responseText){throw new Error("All Gemini model candidates failed to generate prediction.")}const body=JSON.parse(responseText.trim());let predicted=(body.predictedNumbers||[]).map(n=>parseInt(n,10)).filter(n=>!isNaN(n)&&n>=1&&n<=49);predicted=Array.from(new Set(predicted)).slice(0,6);if(predicted.length!==6){console.error("Gemini generated invalid prediction length:",predicted);return{...mathPredict,isAIPowered:false}}predicted.sort((a,b)=>a-b);const safePrediction=[];for(const num of predicted){if(activeNumbers.includes(num)){for(const replacement of mathPredict.predictedNumbers){if(!predicted.includes(replacement)&&!activeNumbers.includes(replacement)&&!safePrediction.includes(replacement)){safePrediction.push(replacement);break}}}else{safePrediction.push(num)}}while(safePrediction.length<6){for(const replacement of mathPredict.predictedNumbers){if(!safePrediction.includes(replacement)&&!activeNumbers.includes(replacement)){safePrediction.push(replacement);break}}}safePrediction.sort((a,b)=>a-b);return{predictedNumbers:safePrediction,activeTargets,reasoning:{triggerLocking:body.reasoning.triggerLocking||mathPredict.reasoning.triggerLocking,edgeDeduction:body.reasoning.edgeDeduction||mathPredict.reasoning.edgeDeduction,omissionConclusion:body.reasoning.omissionConclusion||mathPredict.reasoning.omissionConclusion},isAIPowered:true}}catch(err){console.error("Gemini prediction generation failed, gracefully falling back to math model:",err);return{...mathPredict,isAIPowered:false}}}__name(getAIPrediction,"getAIPrediction");app.get("/api/analyze",async(req,res)=>{const timestampPath=path.resolve("src/data/last_check.txt");let shouldCheck=false;if(!fs.existsSync(timestampPath)){shouldCheck=true}else{try{const lastCheckTime=parseInt(fs.readFileSync(timestampPath,"utf8").trim(),10);if(isNaN(lastCheckTime)||Date.now()-lastCheckTime>5*60*1e3){shouldCheck=true}}catch{shouldCheck=true}}if(shouldCheck){try{fs.writeFileSync(timestampPath,Date.now().toString(),"utf8");console.log("Passively refreshing lottery drawings check...");await scrapeLatest()}catch(e){console.error("Passive scrape error:",e)}}const rawRecords=getRecords();if(rawRecords.length===0){return res.status(500).json({status:"error",message:"No records available."})}const analysis=analyzeData(rawRecords);const lastPredictions=analysis.predictions.length>0?analysis.predictions[analysis.predictions.length-1].predictedNumbers:[];const currentPeriod=rawRecords[0]?.period||"";let prediction=getCachedPrediction(currentPeriod);if(!prediction){prediction=await getAIPrediction(rawRecords,analysis.triggers,lastPredictions);savePredictionCache(currentPeriod,prediction)}res.json({latestDraw:rawRecords[0],summary:analysis.summary,triggers:analysis.triggers.slice(-50),predictions:analysis.predictions.slice(-30),frequencyStats:analysis.frequencyStats,prediction,totalCount:rawRecords.length})});app.post("/api/refresh",async(req,res)=>{console.log("Force checking lottery results...");const result=await scrapeLatest();if(result.success){clearCachedPredictionFile();res.json({status:"success",message:result.message})}else{res.status(502).json({status:"error",message:result.message})}});app.post("/api/ai-report",async(req,res)=>{try{const{prediction,summary,latestDraw}=req.body;if(!process.env.GEMINI_API_KEY){return res.status(200).json({content:`### \u{1F916} AI\u8F85\u52A9\u5206\u6790\u62A5\u544A (Gemini API \u79BB\u7EBF\u72B6\u6001)
 
-    console.log('Requesting Gemini AI prediction...');
-    const candidateModels = ['gemini-2.5-flash', 'gemini-3.8-flash'];
-    let responseText = '';
-    let usedModel = '';
+\u672C\u7CFB\u7EDF\u6B63\u5904\u4E8E\u8FD0\u884C\u72B6\u6001\uFF0C\u7531\u4E8E\u670D\u52A1\u5668\u7AEF\u672A\u68C0\u6D4B\u5230 \`GEMINI_API_KEY\` \u5BC6\u94A5\uFF0C\u7CFB\u7EDF\u5DF2\u81EA\u52A8\u8F6C\u5165\u3010\u9AD8\u7CBE\u5EA6\u6570\u7406\u903B\u8F91\u5F15\u64CE\u3011\u672C\u5730\u8FD0\u884C\u3002
 
-    for (const model of candidateModels) {
-      try {
-        console.log(`Attempting prediction with model: ${model}`);
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                predictedNumbers: {
-                  type: Type.ARRAY,
-                  items: { type: Type.INTEGER },
-                  description: '6 unique numbers from 1 to 49 that are least likely to appear',
-                },
-                reasoning: {
-                  type: Type.OBJECT,
-                  properties: {
-                    triggerLocking: { type: Type.STRING },
-                    edgeDeduction: { type: Type.STRING },
-                    omissionConclusion: { type: Type.STRING },
-                  },
-                  required: ['triggerLocking', 'edgeDeduction', 'omissionConclusion'],
-                },
-              },
-              required: ['predictedNumbers', 'reasoning'],
-            },
-          },
-        });
-        if (response.text) {
-          responseText = response.text;
-          usedModel = model;
-          break;
-        }
-      } catch (modelErr: any) {
-        console.warn(`Model ${model} failed (${modelErr.message}), trying next candidate...`);
-      }
-    }
+#### \u{1F4CA} \u5F53\u524D\u671F\u5F00\u5956\u5BF9\u51B2
+- **\u6700\u65B0\u671F\u6570**\uFF1A${latestDraw?.period||"\u672A\u52A0\u8F7D"}
+- **\u5F00\u5956\u53F7**\uFF1A[${(latestDraw?.numbers||[]).join(", ")}]
+- **\u6392\u9664\u5EFA\u8BAE**\uFF1A[${(prediction?.predictedNumbers||[]).map(n=>n.toString().padStart(2,"0")).join(", ")}]
 
-    if (!responseText) {
-      throw new Error('All Gemini model candidates failed to generate prediction.');
-    }
+#### \u{1F4A1} \u7B97\u6CD5\u6267\u884C\u6307\u6807
+- **\u9694\u671F\u540C\u53F7\u89E6\u53D1\u70B9\u603B\u6570**\uFF1A${summary?.totalTriggers||0} \u6B21
+- **\u57FA\u51C6\u4F4D\u8F68\u8FF9\u547D\u4E2D\u603B\u6570**\uFF1A${summary?.totalHits||0} \u6B21
+- **\u8FFD\u9010\u8865\u4F4D\u9AD8\u53D1\u6548\u7387 (1-4\u671F)**\uFF1A${summary?.hitRate1To4?(summary.hitRate1To4*100).toFixed(1):"100"}%
+- **\u4E13\u5BB6\u6392\u9664\u7B97\u6CD5\u51C6\u786E\u5EA6 (6\u7801\u5B8C\u5168\u6392\u9664)**\uFF1A${summary?.exclusionSuccessRate?(summary.exclusionSuccessRate*100).toFixed(1):"85"}%
 
-    const body = JSON.parse(responseText.trim());
-    
-    // Validate the prediction bounds
-    let predicted = (body.predictedNumbers || [])
-      .map((n: any) => parseInt(n, 10))
-      .filter((n: number) => !isNaN(n) && n >= 1 && n <= 49);
-      
-    // Dedup and slice
-    predicted = Array.from(new Set(predicted)).slice(0, 6);
-    
-    // If invalid or less than 6, fallback to math prediction
-    if (predicted.length !== 6) {
-      console.error('Gemini generated invalid prediction length:', predicted);
-      return { ...mathPredict, isAIPowered: false };
-    }
+*(\u63D0\u793A\uFF1A\u82E5\u8981\u6FC0\u6D3B\u6DF1\u5EA6AI\u6F14\u8BD1\u548C\u9AD8\u7EA7\u8D8B\u52BF\u62A5\u544A\uFF0C\u8BF7\u81F3 AI Studio \u7684 Secrets \u7BA1\u7406\u533A\u914D\u7F6E\u6709\u6548\u7684 GEMINI_API_KEY \u540E\uFF0C\u5373\u53EF\u4EAB\u53D7\u5168\u81EA\u52A8\u7684\u6570\u5B66+AI\u6DF7\u5408\u9884\u6D4B\u62A5\u544A\uFF01)*`})}const ai=new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY,httpOptions:{apiVersion:"v1",headers:{"User-Agent":"aistudio-build"}}});const numShow=(prediction?.predictedNumbers||[]).map(n=>n.toString().padStart(2,"0")).join(", ");const activeShow=(prediction?.activeTargets||[]).map(t=>`\u53F7\u7801 ${t.number} \u5728\u7B2C ${t.basePos} \u4F4D\u89E6\u53D1`).join("\u3001");const prompt=`\u4F60\u662F\u4E00\u4E2A\u6FB3\u95E8\u8D5B\u9A6C\u6570\u636E\u5206\u6790\u4E13\u5BB6\u3001\u9AD8\u7B49\u6982\u7387\u8BBA\u4E0E\u5F69\u7968\u6DF7\u6C8C\u5B66\u5B66\u8005\u3002
+\u8BF7\u6839\u636E\u4EE5\u4E0B\u771F\u5B9E\u7684\u6570\u7406\u5206\u6790\u6A21\u578B\u8BA1\u7B97\u51FA\u7684\u7ED3\u679C\uFF0C\u751F\u6210\u4E00\u5C01\u4E13\u4E1A\u3001\u6743\u5A01\u3001\u9AD8\u667A\u5546\u611F\u89C9\u7684\u9884\u6D4B\u4E0E\u6392\u9664\u8BC4\u4F30\u62A5\u544A\u3002
 
-    predicted.sort((a, b) => a - b);
+\u5F53\u524D\u671F\u6570\u6570\u636E:
+- \u6700\u65B0\u5F00\u5956\u671F: ${latestDraw?.period||"\u6700\u65B0"}
+- \u6700\u65B0\u5F00\u5956\u53F7: [${(latestDraw?.numbers||[]).join(", ")}]
+- \u5F53\u524D\u56DE\u6D4B\u5927\u76D8\u6570\u636E\u603B\u6837\u672C: ${summary?.totalDraws||165} \u671F
+- \u8F68\u8FF9\u89E6\u53D1\u5668\u603B\u89E6\u53D1\u4E8B\u4EF6: ${summary?.totalTriggers||0} \u6B21
+- \u57FA\u51C6\u4F4DP\u6781\u901F\u56DE\u8865\u8F68\u8FF9\u603B\u547D\u4E2D: ${summary?.totalHits||0} \u6B21
+- 1-4\u671F\u5FEB\u901F\u8865\u4F4D\u547D\u4E2D\u5360\u6BD4: ${summary?.hitRate1To4?(summary.hitRate1To4*100).toFixed(1):"100"}%
+- \u5F53\u524D\u5728\u8FFD\u8D76\u5468\u671F\u4E2D\u7684\u6D3B\u8DC3\u76EE\u6807\u53F7: [${activeShow||"\u65E0"}]
+- \u4E13\u5BB6\u6392\u9664\u7B97\u6CD5\u56DE\u6D4B\u5B8C\u5168\u6210\u529F\u7387: ${summary?.exclusionSuccessRate?(summary.exclusionSuccessRate*100).toFixed(1):"80"}%
+- \u7CFB\u7EDF\u4F7F\u7528\u6392\u9664\u6CD5\u63A8\u5BFC\u51FA\u7684\u4E0B\u4E00\u671F\u4E0D\u53EF\u80FD\u51FA\u73B0\u76846\u4E2A\u53F7\u7801: [${numShow}]
 
-    // Make sure we did not include any active numbers
-    const safePrediction: number[] = [];
-    for (const num of predicted) {
-      if (activeNumbers.includes(num)) {
-        // Swap with the mathematical safe suggestion
-        for (const replacement of mathPredict.predictedNumbers) {
-          if (!predicted.includes(replacement) && !activeNumbers.includes(replacement) && !safePrediction.includes(replacement)) {
-            safePrediction.push(replacement);
-            break;
-          }
-        }
-      } else {
-        safePrediction.push(num);
-      }
-    }
+\u8BF7\u6839\u636E\u8FD9\u4E9B\u6570\u636E\uFF0C\u5199\u4E00\u5C01\u6DF1\u5EA6\u7684\u6FB3\u95E8\u8D5B\u9A6C\u5F69\u7968\u5206\u6790\u3002\u5185\u5BB9\u5FC5\u987B\u8986\u76D6\u4EE5\u4E0B\u4E09\u4E2A\u65B9\u9762\uFF0C\u5E76\u4F7F\u7528\u4EE5\u4E0B\u7279\u5B9A\u7684\u4E13\u4E1A\u5C0F\u6807\u9898\uFF0C\u5C55\u793A\u4F60\u7684\u5B66\u672F\u6DF1\u5EA6\u548C\u4E25\u5BC6\u903B\u8F91\uFF1A
 
-    // Fill up if somehow less than 6
-    while (safePrediction.length < 6) {
-      for (const replacement of mathPredict.predictedNumbers) {
-        if (!safePrediction.includes(replacement) && !activeNumbers.includes(replacement)) {
-          safePrediction.push(replacement);
-          break;
-        }
-      }
-    }
+\u4E00\u3001\u89E6\u53D1\u7279\u5F81\u4E0E\u53F7\u7801\u9501\u5B9A
+\u8BE6\u7EC6\u9610\u91CA\u201C\u9694\u671F\u540C\u53F7\u201D\u5728\u672C\u6B21\u9884\u6D4B\u4E2D\u7684\u6700\u65B0\u89E6\u53D1\u52A8\u4F5C\uFF0C\u8BA1\u7B97\u76EE\u6807\u53F7\u548C\u5939\u5FC3\u53F7\uFF0C\u5206\u6790\u5B83\u4EEC\u548C\u6700\u65B0\u671F\u6D3B\u8DC3\u5EA6\u7684\u6570\u7406\u76F8\u5173\u6027\u3002
 
-    safePrediction.sort((a, b) => a - b);
+\u4E8C\u3001\u8FB9\u7F18\u7B97\u6CD5\u4E0E\u8DEF\u5F84\u63A8\u6F14
+\u8BE6\u7EC6\u8BA8\u8BBA\u8FB9\u7F18\u73AF\u5F62\u8DF3\u8F6C\u903B\u8F91\uFF08\u5982\u7B2C1\u540D\u548C\u7B2C7\u540D\u9047\u5230\u8FB9\u7F18\u65F6\u7684\u8DF3\u8F6C\uFF09\u53CA\u5728\u8FD9\u4E09\u4E2A\u9884\u6D4B\u843D\u70B9\u4F4D\u7F6E\u4E0A\u7684\u5206\u5E03\u60C5\u51B5\u3002\u9610\u8FF0\u5982\u4F55\u5229\u7528\u5BF9\u51B2\u9632\u7EBF\u786E\u4FDD\u6392\u9664\u76846\u4E2A\u53F7\u7801\u4E0D\u5728\u9AD8\u6982\u7387\u56DE\u8865\u8DEF\u5F84\u4E2D\u3002
 
-    return {
-      predictedNumbers: safePrediction,
-      activeTargets: activeTargets,
-      reasoning: {
-        triggerLocking: body.reasoning.triggerLocking || mathPredict.reasoning.triggerLocking,
-        edgeDeduction: body.reasoning.edgeDeduction || mathPredict.reasoning.edgeDeduction,
-        omissionConclusion: body.reasoning.omissionConclusion || mathPredict.reasoning.omissionConclusion,
-      },
-      isAIPowered: true,
-    };
-  } catch (err) {
-    console.error('Gemini prediction generation failed, gracefully falling back to math model:', err);
-    return { ...mathPredict, isAIPowered: false };
-  }
-}
+\u4E09\u3001\u9057\u6F0F\u5206\u6790\u4E0E\u6392\u9664\u7ED3\u8BBA
+\u901A\u8FC7\u5927\u76D8\u51B7\u70ED\u5EA6\u4EE5\u53CA\u9057\u6F0F\u503C\uFF0C\u8BBA\u8FF0\u4E3A\u4EC0\u4E48\u63A8\u5BFC\u51FA\u7684\u8FD96\u4E2A\u53F7\u7801 [${numShow}] \u662F\u4E0B\u4E00\u671F\u6700\u4E0D\u53EF\u80FD\u51FA\u73B0\u7684\uFF0C\u5E76\u8BF4\u660E\u4F60\u7684\u6570\u636E\u5F52\u6863\u7B56\u7565\u3002
 
-// 1. API: Get full analytical model
-app.get('/api/analyze', async (req, res) => {
-  // Check if we should passively trigger a scrape to check for 21:35 updates
-  // Only scrape if the cache doesn't exist or is older than 5 minutes since last check (using simple timestamp files)
-  const timestampPath = path.resolve('src/data/last_check.txt');
-  let shouldCheck = false;
-  
-  if (!fs.existsSync(timestampPath)) {
-    shouldCheck = true;
-  } else {
-    try {
-      const lastCheckTime = parseInt(fs.readFileSync(timestampPath, 'utf8').trim(), 10);
-      if (isNaN(lastCheckTime) || Date.now() - lastCheckTime > 5 * 60 * 1000) {
-        shouldCheck = true;
-      }
-    } catch {
-      shouldCheck = true;
-    }
-  }
+\u5B57\u6570\u8981\u6C42\u5728800\u5B57\u5DE6\u53F3\uFF0C\u8BED\u6C14\u8981\u7406\u6027\u3001\u51B7\u9759\u3001\u5145\u6EE1\u9AD8\u51C0\u503C\u5B66\u8005\u98CE\u8303\u3002\u5FC5\u987B\u4F7F\u7528 Markdown \u683C\u5F0F\u8F93\u51FA\uFF0C\u6587\u5B57\u6392\u7248\u4F18\u96C5\u7CBE\u7F8E\u3002\u4E0D\u8981\u4F7F\u7528\u5E9F\u8BDD\uFF0C\u76F4\u5954\u4E3B\u9898\u3002`;let reportContent="";const candidateModels=["gemini-2.5-flash","gemini-3.8-flash"];for(const model of candidateModels){try{const response=await ai.models.generateContent({model,contents:prompt});if(response.text){reportContent=response.text;break}}catch(err){console.warn(`Report generation with ${model} failed (${err.message}), trying next...`)}}if(!reportContent){throw new Error("All Gemini model candidates failed to generate report.")}res.json({content:reportContent})}catch(err){console.error("Gemini API call failed:",err);res.status(500).json({error:"Gemini reports error: "+err.message})}});async function startServer(){if(process.env.NODE_ENV!=="production"){const vite=await createViteServer({server:{middlewareMode:true},appType:"spa"});app.use(vite.middlewares)}else{const distPath=path.join(process.cwd(),"dist");app.use(express.static(distPath));app.get("*",(req,res)=>{res.sendFile(path.join(distPath,"index.html"))})}app.listen(PORT,"0.0.0.0",()=>{console.log(`Server running on port ${PORT}`)})}__name(startServer,"startServer");startServer();
 
-  if (shouldCheck) {
-    try {
-      fs.writeFileSync(timestampPath, Date.now().toString(), 'utf8');
-      console.log('Passively refreshing lottery drawings check...');
-      await scrapeLatest();
-    } catch (e) {
-      console.error('Passive scrape error:', e);
-    }
-  }
-
-  const rawRecords = getRecords();
-  if (rawRecords.length === 0) {
-    return res.status(500).json({ status: 'error', message: 'No records available.' });
-  }
-
-  const analysis = analyzeData(rawRecords);
-  
-  // Predict next period based on computed results and history
-  const lastPredictions = analysis.predictions.length > 0 
-    ? analysis.predictions[analysis.predictions.length - 1].predictedNumbers 
-    : [];
-
-  const currentPeriod = rawRecords[0]?.period || '';
-  let prediction = getCachedPrediction(currentPeriod);
-  if (!prediction) {
-    prediction = await getAIPrediction(rawRecords, analysis.triggers, lastPredictions);
-    savePredictionCache(currentPeriod, prediction);
-  }
-
-  res.json({
-    latestDraw: rawRecords[0],
-    summary: analysis.summary,
-    triggers: analysis.triggers.slice(-50), // Send last 50 triggers to avoid bloat
-    predictions: analysis.predictions.slice(-30), // Send last 30 historical predictions
-    frequencyStats: analysis.frequencyStats,
-    prediction,
-    totalCount: rawRecords.length,
-  });
-});
-
-// 2. API: Force scrape
-app.post('/api/refresh', async (req, res) => {
-  console.log('Force checking lottery results...');
-  const result = await scrapeLatest();
-  if (result.success) {
-    // Invalidate cache to guarantee a fresh Gemini prediction is made based on the new data
-    clearCachedPredictionFile();
-    res.json({ status: 'success', message: result.message });
-  } else {
-    res.status(502).json({ status: 'error', message: result.message });
-  }
-});
-
-// 3. API: Generate smart AI explanation essay using @google/genai
-app.post('/api/ai-report', async (req, res) => {
-  try {
-    const { prediction, summary, latestDraw } = req.body;
-
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(200).json({
-        content: `### 🤖 AI辅助分析报告 (Gemini API 离线状态)
-
-本系统正处于运行状态，由于服务器端未检测到 \`GEMINI_API_KEY\` 密钥，系统已自动转入【高精度数理逻辑引擎】本地运行。
-
-#### 📊 当前期开奖对冲
-- **最新期数**：${latestDraw?.period || '未加载'}
-- **开奖号**：[${(latestDraw?.numbers || []).join(', ')}]
-- **排除建议**：[${(prediction?.predictedNumbers || []).map((n: number) => n.toString().padStart(2, '0')).join(', ')}]
-
-#### 💡 算法执行指标
-- **隔期同号触发点总数**：${summary?.totalTriggers || 0} 次
-- **基准位轨迹命中总数**：${summary?.totalHits || 0} 次
-- **追逐补位高发效率 (1-4期)**：${summary?.hitRate1To4 ? (summary.hitRate1To4 * 100).toFixed(1) : '100'}%
-- **专家排除算法准确度 (6码完全排除)**：${summary?.exclusionSuccessRate ? (summary.exclusionSuccessRate * 100).toFixed(1) : '85'}%
-
-*(提示：若要激活深度AI演译和高级趋势报告，请至 AI Studio 的 Secrets 管理区配置有效的 GEMINI_API_KEY 后，即可享受全自动的数学+AI混合预测报告！)*`,
-      });
-    }
-
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: {
-        apiVersion: 'v1',
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-
-    const numShow = (prediction?.predictedNumbers || []).map((n: number) => n.toString().padStart(2, '0')).join(', ');
-    const activeShow = (prediction?.activeTargets || []).map((t: any) => `号码 ${t.number} 在第 ${t.basePos} 位触发`).join('、');
-
-    const prompt = `你是一个澳门赛马数据分析专家、高等概率论与彩票混沌学学者。
-请根据以下真实的数理分析模型计算出的结果，生成一封专业、权威、高智商感觉的预测与排除评估报告。
-
-当前期数数据:
-- 最新开奖期: ${latestDraw?.period || '最新'}
-- 最新开奖号: [${(latestDraw?.numbers || []).join(', ')}]
-- 当前回测大盘数据总样本: ${summary?.totalDraws || 165} 期
-- 轨迹触发器总触发事件: ${summary?.totalTriggers || 0} 次
-- 基准位P极速回补轨迹总命中: ${summary?.totalHits || 0} 次
-- 1-4期快速补位命中占比: ${summary?.hitRate1To4 ? (summary.hitRate1To4 * 100).toFixed(1) : '100'}%
-- 当前在追赶周期中的活跃目标号: [${activeShow || '无'}]
-- 专家排除算法回测完全成功率: ${summary?.exclusionSuccessRate ? (summary.exclusionSuccessRate * 100).toFixed(1) : '80'}%
-- 系统使用排除法推导出的下一期不可能出现的6个号码: [${numShow}]
-
-请根据这些数据，写一封深度的澳门赛马彩票分析。内容必须覆盖以下三个方面，并使用以下特定的专业小标题，展示你的学术深度和严密逻辑：
-
-一、触发特征与号码锁定
-详细阐释“隔期同号”在本次预测中的最新触发动作，计算目标号和夹心号，分析它们和最新期活跃度的数理相关性。
-
-二、边缘算法与路径推演
-详细讨论边缘环形跳转逻辑（如第1名和第7名遇到边缘时的跳转）及在这三个预测落点位置上的分布情况。阐述如何利用对冲防线确保排除的6个号码不在高概率回补路径中。
-
-三、遗漏分析与排除结论
-通过大盘冷热度以及遗漏值，论述为什么推导出的这6个号码 [${numShow}] 是下一期最不可能出现的，并说明你的数据归档策略。
-
-字数要求在800字左右，语气要理性、冷静、充满高净值学者风范。必须使用 Markdown 格式输出，文字排版优雅精美。不要使用废话，直奔主题。`;
-
-    let reportContent = '';
-    const candidateModels = ['gemini-2.5-flash', 'gemini-3.8-flash'];
-    for (const model of candidateModels) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-        });
-        if (response.text) {
-          reportContent = response.text;
-          break;
-        }
-      } catch (err: any) {
-        console.warn(`Report generation with ${model} failed (${err.message}), trying next...`);
-      }
-    }
-
-    if (!reportContent) {
-      throw new Error('All Gemini model candidates failed to generate report.');
-    }
-
-    res.json({ content: reportContent });
-  } catch (err: any) {
-    console.error('Gemini API call failed:', err);
-    res.status(500).json({ error: 'Gemini reports error: ' + err.message });
-  }
-});
-
-// Configure Vite or Static Files
-async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-}
-
-startServer();
+//# sourceMappingURL=data:application/json;base64,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QUFTLEtBQU0sQ0FDakIsY0FBZ0IsU0FBUyxLQUN6QixLQUNGLENBQ0YsT0FBUyxJQUFVLENBQ2pCLFFBQVEsS0FBSywwQkFBMEIsS0FBSyxZQUFZLElBQUksT0FBTyxtQkFBbUIsQ0FDeEYsQ0FDRixDQUVBLEdBQUksQ0FBQyxjQUFlLENBQ2xCLE1BQU0sSUFBSSxNQUFNLHdEQUF3RCxDQUMxRSxDQUVBLElBQUksS0FBSyxDQUFFLFFBQVMsYUFBYyxDQUFDLENBQ3JDLE9BQVMsSUFBVSxDQUNqQixRQUFRLE1BQU0sMEJBQTJCLEdBQUcsRUFDNUMsSUFBSSxPQUFPLEdBQUcsRUFBRSxLQUFLLENBQUUsTUFBTyx5QkFBMkIsSUFBSSxPQUFRLENBQUMsQ0FDeEUsQ0FDRixDQUFDLEVBR0QsZUFBZSxhQUFjLENBQzNCLEdBQUksUUFBUSxJQUFJLFdBQWEsYUFBYyxDQUN6QyxNQUFNLEtBQU8sTUFBTSxpQkFBaUIsQ0FDbEMsT0FBUSxDQUFFLGVBQWdCLElBQUssRUFDL0IsUUFBUyxLQUNYLENBQUMsRUFDRCxJQUFJLElBQUksS0FBSyxXQUFXLENBQzFCLEtBQU8sQ0FDTCxNQUFNLFNBQVcsS0FBSyxLQUFLLFFBQVEsSUFBSSxFQUFHLE1BQU0sRUFDaEQsSUFBSSxJQUFJLFFBQVEsT0FBTyxRQUFRLENBQUMsRUFDaEMsSUFBSSxJQUFJLElBQUssQ0FBQyxJQUFLLE1BQVEsQ0FDekIsSUFBSSxTQUFTLEtBQUssS0FBSyxTQUFVLFlBQVksQ0FBQyxDQUNoRCxDQUFDLENBQ0gsQ0FFQSxJQUFJLE9BQU8sS0FBTSxVQUFXLElBQU0sQ0FDaEMsUUFBUSxJQUFJLDBCQUEwQixJQUFJLEVBQUUsQ0FDOUMsQ0FBQyxDQUNILENBbEJlLGtDQW9CZixZQUFZIiwibmFtZXMiOltdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyIvYXBwL2FwcGxldC9zZXJ2ZXIudHMiXSwic291cmNlc0NvbnRlbnQiOltudWxsXX0=

@@ -1,29 +1,28 @@
-// src/types.ts
-
 export interface DrawRecord {
   period: string;
-  numbers: number[]; // 7 numbers
+  numbers: number[];
+  date?: string;
 }
 
 export interface TriggerEvent {
-  period: string;       // Period N
-  position: number;     // 1-indexed (1 to 7)
-  targetNumber: number; // Number X
-  sandwichNumber: number; // Number Y in period N-1
-  basePosition: number; // Position P (1 to 7)
-  trackingWindow: string[]; // Periods from N+1 to N+8
+  period: string;
+  position: number;
+  targetNumber: number;
+  sandwichNumber: number;
+  basePosition: number;
+  trackingWindow: string[];
   status: 'In Progress' | 'Hit' | 'Miss';
-  hitPeriodIndex?: number; // 0 to 7 (corresponding to N+1 to N+8)
-  hitPeriod?: string;   // Exact period that hit
-  hitPosition?: number; // Position where it hit
+  hitPeriodIndex?: number;
+  hitPeriod?: string;
+  hitPosition?: number;
 }
 
 export interface ExclusionPrediction {
-  period: string;              // For which period this prediction is made
-  predictedNumbers: number[];  // 6 numbers
-  actualNumbers?: number[];     // Actual numbers drawn in this period (if available)
-  isSuccessful?: boolean;      // True if NONE of the 6 predicted numbers appeared in actualNumbers
-  hitNumbers?: number[];       // Numbers that actually appeared (should be empty for success)
+  period: string;
+  predictedNumbers: number[];
+  actualNumbers?: number[];
+  isSuccessful?: boolean;
+  hitNumbers?: number[];
 }
 
 export interface FrequencyStats {
@@ -31,6 +30,26 @@ export interface FrequencyStats {
   frequency: number;
   omission: number;
   lastSeenPeriod: string;
+}
+
+export interface PredictionReasoning {
+  triggerLocking: string;
+  edgeDeduction: string;
+  omissionConclusion: string;
+}
+
+export interface ActiveTarget {
+  number: number;
+  period: string;
+  basePos: number;
+  remainingPeriods: number;
+}
+
+export interface CurrentPrediction {
+  predictedNumbers: number[];
+  activeTargets: ActiveTarget[];
+  reasoning: PredictionReasoning;
+  isAIPowered?: boolean;
 }
 
 export interface AnalysisSummary {
@@ -41,25 +60,10 @@ export interface AnalysisSummary {
   totalHit5To8: number;
   totalMisses: number;
   totalInProgress: number;
-  overallHitRate: number; // totalHits / (totalHits + totalMisses)
-  hitRate1To4: number;    // totalHit1To4 / totalHits
-  hitRate5To8: number;    // totalHit5To8 / totalHits
-  exclusionSuccessRate: number; // % of predictions where 0 predicted numbers appeared
-}
-
-export interface PredictionResult {
-  predictedNumbers: number[];
-  activeTargets: { number: number; period: string; basePos: number; remainingPeriods: number }[];
-  reasoning: {
-    triggerLocking: string;
-    edgeDeduction: string;
-    omissionConclusion: string;
-  };
-  isAIPowered?: boolean;
-  modelUsed?: string;
-  isFallback?: boolean;
-  fallbackReason?: string;
-  fallbackLogs?: string[];
+  overallHitRate: number;
+  hitRate1To4: number;
+  hitRate5To8: number;
+  exclusionSuccessRate: number;
 }
 
 export interface AnalyzeAPIResponse {
@@ -68,6 +72,6 @@ export interface AnalyzeAPIResponse {
   triggers: TriggerEvent[];
   predictions: ExclusionPrediction[];
   frequencyStats: FrequencyStats[];
-  prediction: PredictionResult;
+  prediction: CurrentPrediction;
   totalCount: number;
 }

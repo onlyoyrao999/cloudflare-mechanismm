@@ -656,11 +656,17 @@ export default function App() {
                       )}
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex flex-col items-end">
                     <span className="text-xs text-slate-400">预测下期目标</span>
-                    <span className="block text-sm font-mono font-bold text-indigo-400">
-                      第 {(parseInt(latestDraw.period, 10) + 1).toString()} 期
-                    </span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-sm font-mono font-bold text-indigo-400">
+                        第 {(parseInt(latestDraw.period, 10) + 1).toString()} 期
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 border border-amber-500/30 text-amber-300 px-2 py-0.5 rounded-full font-medium shadow-sm">
+                        <Clock className="w-2.5 h-2.5 animate-spin" />
+                        待验证 (今晚21:35)
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -1158,6 +1164,31 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-950/50 font-mono">
+                        {/* 待验证：新一期未开奖预测校验行 */}
+                        {prediction && (
+                          <tr className="bg-indigo-950/30 text-xs border-l-2 border-amber-400">
+                            <td className="py-2.5 px-2 font-semibold text-indigo-300">
+                              第 {(parseInt(latestDraw.period, 10) + 1).toString()} 期
+                            </td>
+                            <td className="py-2.5 px-1 pr-3">
+                              <span className="text-[10px] text-amber-400/90 font-sans italic flex items-center gap-1">
+                                <Clock className="w-3 h-3 animate-spin text-amber-400" />
+                                待今晚 21:35 开奖
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-1">
+                              <span className="text-[10px] text-indigo-300 font-bold">
+                                {prediction.predictedNumbers.map(n => n.toString().padStart(2, '0')).join(' ')}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-2 text-right">
+                              <span className="inline-flex items-center gap-1.5 text-[10px] font-sans font-semibold text-amber-300 bg-amber-950/40 px-2 py-0.5 border border-amber-900/50 rounded-full">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                                待验证
+                              </span>
+                            </td>
+                          </tr>
+                        )}
                         {predictions.length === 0 ? (
                           <tr>
                             <td colSpan={4} className="py-4 text-center text-slate-600">无回测数据</td>
