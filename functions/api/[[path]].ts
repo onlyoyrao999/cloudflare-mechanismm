@@ -406,8 +406,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const nextPeriod = (parseInt(currentPeriod, 10) + 1).toString();
     const prediction = await getCachedPrediction(currentPeriod, env) || predictNextDraw(rawRecords, analysis.triggers, []);
 
-    const prompt = `你是一位享誉业界的资深数理统计与彩票算法首席研究员。
-请根据第 ${currentPeriod} 期历史开奖以及针对第 ${nextPeriod} 期的六码不可能出现预测 [${prediction.predictedNumbers.join(', ')}]，撰写一份极具深度与学术水准的《澳门赛马会彩票下期走势与六码排除研报》。
+    const prompt = `你是一位享誉业界的资深数理统计与算法首席研究员。
+请根据第 ${currentPeriod} 期历史开奖以及针对第 ${nextPeriod} 期的六码不可能出现预测 [${prediction.predictedNumbers.join(', ')}]，撰写一份极具深度与学术水准的《数字轨迹分析与六码排除研报》。
 要求理性、冷静、充满高学术风范，使用 Markdown 格式排版精美。`;
 
     let reportContent = '';
@@ -436,7 +436,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
 
     if (!reportContent) {
-      reportContent = `### 澳门彩票第 ${nextPeriod} 期排除推演数理研报\n\n根据大数定律与同号转移对冲模型，下期排除号码为：**[${prediction.predictedNumbers.join(', ')}]**。`;
+      reportContent = `### 第 ${nextPeriod} 期排除推演数理研报\n\n根据大数定律与同号转移对冲模型，下期排除号码为：**[${prediction.predictedNumbers.join(', ')}]**。`;
     }
 
     return new Response(JSON.stringify({ content: reportContent }), { headers: corsHeaders });

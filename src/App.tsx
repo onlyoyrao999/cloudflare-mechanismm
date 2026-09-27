@@ -413,11 +413,11 @@ export default function App() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <h1 className="text-lg font-bold tracking-tight text-white">MacauJC 赛马数字轨迹分析系统</h1>
+              <h1 className="text-lg font-bold tracking-tight text-white">数字轨迹分析系统</h1>
               <span className="text-[10px] bg-slate-900 border border-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono">Expert V1.2</span>
             </div>
             <p className="text-xs text-slate-400">
-              采用隔期跳跃触发机制锁定夹心变动，通过环形邻轨排除策略精炼 6 位不出现号码
+              本系统采用的Gemini大模型策略经验
             </p>
           </div>
 
@@ -461,25 +461,25 @@ export default function App() {
       <main className="max-w-5xl mx-auto px-4 py-6 md:px-8 md:py-8 flex flex-col gap-6">
 
         {/* LATEST DRAW DISPLAY */}
-        <div className="bg-slate-900/50 border border-slate-900 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-slate-900/50 border border-slate-900 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="text-xs font-mono font-medium tracking-wider text-slate-400 uppercase mb-2 flex items-center gap-2">
+            <h3 className="text-xs font-mono font-medium tracking-wider text-slate-400 uppercase mb-1 sm:mb-2 flex items-center gap-2">
               <span>最新开奖归档</span>
               <span className="text-indigo-400 font-bold bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-900/40">第 {latestDraw.period} 期</span>
             </h3>
             {latestDraw.numbers.length > 6 && (
               <p className="text-[11px] text-slate-500 font-mono">
-                前 6 位为常规名次，第 7 位为特别号码
+                前 6 位为常规正码，第 7 位为特别号码
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto py-1">
             {latestDraw.numbers.map((num, idx) => (
               <div 
                 key={idx} 
-                className={`w-10 h-10 rounded-xl flex items-center justify-center font-mono font-bold text-sm shadow-inner transition ${
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex-shrink-0 flex items-center justify-center font-mono font-bold text-xs sm:text-sm shadow-inner transition ${
                   idx === 6 
-                    ? 'bg-rose-950/60 border border-rose-800 text-rose-300 ring-1 ring-rose-500/30' // Special number/Bonus 
+                    ? 'bg-rose-950/70 border border-rose-600/80 text-rose-300 ring-1 ring-rose-500/30' // Special number/Bonus 
                     : 'bg-slate-950 border border-slate-800 text-white'
                 }`}
               >
@@ -580,16 +580,16 @@ export default function App() {
                 </div>
 
                 {/* THE 6 EXCLUDED BALLS */}
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
+                <div className="grid grid-cols-6 gap-2 sm:gap-3 mb-6">
                   {prediction.predictedNumbers.map((num, idx) => (
                     <div 
                       key={idx} 
-                      className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center shadow-lg group hover:border-slate-700/80 transition"
+                      className="bg-slate-950 border border-slate-800 rounded-xl sm:rounded-2xl p-2 sm:p-4 flex flex-col items-center justify-center shadow-lg group hover:border-slate-700/80 transition"
                     >
-                      <div className="w-12 h-12 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center font-mono text-lg font-extrabold text-slate-300 mb-2 shadow-inner group-hover:text-indigo-400 transition">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center font-mono text-sm sm:text-lg font-extrabold text-slate-300 mb-1 sm:mb-2 shadow-inner group-hover:text-indigo-400 transition">
                         {num.toString().padStart(2, '0')}
                       </div>
-                      <span className="text-[10px] font-mono text-slate-500">不可能出现</span>
+                      <span className="text-[9px] sm:text-[10px] font-mono text-slate-500 whitespace-nowrap">不可能出现</span>
                     </div>
                   ))}
                 </div>
@@ -789,11 +789,11 @@ export default function App() {
                                       <span>六码不可能出现推演:</span>
                                       {isSuccess && <span className="text-emerald-400 font-bold">100% 成功规避</span>}
                                     </div>
-                                    <div className="flex gap-1.5 flex-wrap">
+                                    <div className="flex gap-1 sm:gap-1.5 items-center flex-nowrap overflow-x-auto py-0.5">
                                       {item.predictedNumbers?.map((num, i) => (
                                         <span
                                           key={i}
-                                          className={`w-7 h-7 rounded-lg font-mono font-bold text-xs flex items-center justify-center shadow-sm ${
+                                          className={`w-7 h-7 rounded-lg font-mono font-bold text-xs flex-shrink-0 flex items-center justify-center shadow-sm ${
                                             isSuccess
                                               ? 'bg-emerald-950 border border-emerald-400/80 text-emerald-200'
                                               : isPending
@@ -814,22 +814,22 @@ export default function App() {
                                     </div>
                                     {isPending ? (
                                       <div className="text-[11px] text-amber-300/90 italic font-sans flex items-center gap-1 py-1">
-                                        <Clock className="w-3 h-3 animate-spin text-amber-400" />
+                                        <Clock className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
                                         <span>等待今晚 21:35 官方开奖并自动比对...</span>
                                       </div>
                                     ) : (
-                                      <div className="flex gap-1.5 items-center flex-wrap">
+                                      <div className="flex gap-1 sm:gap-1.5 items-center flex-nowrap overflow-x-auto py-0.5">
                                         {item.actualNumbers?.slice(0, 6).map((num, i) => (
                                           <span
                                             key={i}
-                                            className="w-7 h-7 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 font-mono text-xs flex items-center justify-center"
+                                            className="w-7 h-7 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 font-mono text-xs flex-shrink-0 flex items-center justify-center"
                                           >
                                             {num.toString().padStart(2, '0')}
                                           </span>
                                         ))}
-                                        <span className="text-slate-600 font-bold text-xs">+</span>
+                                        <span className="text-slate-600 font-bold text-xs flex-shrink-0">+</span>
                                         <span
-                                          className="w-7 h-7 rounded-lg bg-rose-950/80 border border-rose-500/60 text-rose-300 font-mono font-bold text-xs flex items-center justify-center shadow-sm"
+                                          className="w-7 h-7 rounded-lg bg-rose-950/80 border border-rose-500/60 text-rose-300 font-mono font-bold text-xs flex-shrink-0 flex items-center justify-center shadow-sm"
                                           title="特别号码"
                                         >
                                           {item.actualNumbers?.[6]?.toString().padStart(2, '0')}
@@ -1350,7 +1350,7 @@ export default function App() {
       <footer className="border-t border-slate-900 bg-slate-950 py-6 mt-16 text-center text-xs text-slate-500 font-mono px-4">
         <div className="max-w-7xl mx-auto space-y-2">
           <p>
-            MacauJC 赛马轨迹分析客户端. 所有推导逻辑及回测轨迹归档均在服务器端本地计算。
+            数字轨迹分析系统. 所有推导逻辑及回测轨迹归档均在服务器端本地计算。
           </p>
           <p className="text-[10px] text-slate-650">
             © 2026 混沌数理概率研究组。本系统仅用作学术算法之研究及概率模型回测，不包含任何商业性推广行为。
