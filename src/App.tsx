@@ -15,7 +15,15 @@ import {
   FileText,
   Clock,
   BookOpen,
-  ChevronRight
+  ChevronRight,
+  History,
+  Bookmark,
+  Search,
+  Trash2,
+  Save,
+  Filter,
+  Check,
+  Tag
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DrawRecord, TriggerEvent, ExclusionPrediction, FrequencyStats, AnalyzeAPIResponse } from './types.js';
@@ -47,6 +55,19 @@ export default function App() {
   const [myTracker, setMyTracker] = useState<any>(null);
   const [savingPrediction, setSavingPrediction] = useState<boolean>(false);
   const [newPredictionNote, setNewPredictionNote] = useState<string>('');
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Historical records filter & local notes
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'success' | 'pending' | 'failed'>('all');
+  const [historySearch, setHistorySearch] = useState<string>('');
+  const [localSavedNotes, setLocalSavedNotes] = useState<Record<string, { notes: string; savedAt: number; predictedNumbers?: number[] }>>(() => {
+    try {
+      const raw = localStorage.getItem('macau_saved_period_notes');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
 
   // Handle Firebase Auth live sync subscription
   useEffect(() => {
@@ -130,34 +151,74 @@ export default function App() {
     }
   };
 
-  // Helper: Save prediction record with notes
-  const saveCurrentPrediction = async () => {
-    if (!user || !data || !data.prediction) return;
+  // Helper: Save prediction record with notes (supports local storage + Firebase cloud)
+  const savePeriodRecord = async (targetPeriod: string, notesText: string, nums: number[]) => {
+    if (!targetPeriod) return;
     setSavingPrediction(true);
     setError(null);
-    const path = 'saved_predictions';
+    setSaveSuccessMsg(null);
+
+    // 1. Save to local storage for instant availability
+    try {
+      const updated = {
+        ...localSavedNotes,
+        [targetPeriod]: {
+          notes: notesText,
+          savedAt: Date.now(),
+          predictedNumbers: nums
+        }
+      };
+      setLocalSavedNotes(updated);
+      localStorage.setItem('macau_saved_period_notes', JSON.stringify(updated));
+    } catch (e) {
+      console.error("Local storage error:", e);
+    }
+
+    // 2. If logged into Firebase, sync to Firestore
+    if (user) {
+      const path = 'saved_predictions';
+      try {
+        const predId = `${user.uid}_${targetPeriod}`;
+        await setDoc(doc(db, path, predId), {
+          userId: user.uid,
+          period: targetPeriod,
+          predictedNumbers: nums,
+          notes: notesText,
+          createdAt: serverTimestamp(),
+        });
+      } catch (err: any) {
+        console.error("Firebase sync error:", err);
+      }
+    }
+
+    setSavingPrediction(false);
+    setNewPredictionNote('');
+    setSaveSuccessMsg(`第 ${targetPeriod} 期推演笔记已成功保存归档！`);
+    setTimeout(() => setSaveSuccessMsg(null), 3500);
+  };
+
+  const removePeriodRecord = async (targetPeriod: string, firebaseDocId?: string) => {
+    try {
+      const updated = { ...localSavedNotes };
+      delete updated[targetPeriod];
+      setLocalSavedNotes(updated);
+      localStorage.setItem('macau_saved_period_notes', JSON.stringify(updated));
+    } catch (e) {}
+
+    if (user && firebaseDocId) {
+      try {
+        await deleteDoc(doc(db, 'saved_predictions', firebaseDocId));
+      } catch (err) {
+        console.error("Firebase delete error:", err);
+      }
+    }
+  };
+
+  const saveCurrentPrediction = async () => {
+    if (!data || !data.prediction) return;
     const currentPeriod = data.latestDraw?.period || '';
     const nextPeriod = (parseInt(currentPeriod, 10) + 1).toString();
-    try {
-      const predId = `${user.uid}_${nextPeriod}`;
-      await setDoc(doc(db, path, predId), {
-        userId: user.uid,
-        period: nextPeriod,
-        predictedNumbers: data.prediction.predictedNumbers,
-        notes: newPredictionNote,
-        createdAt: serverTimestamp(),
-      });
-      setNewPredictionNote('');
-    } catch (err: any) {
-      console.error("Failed saving prediction to cloud:", err);
-      try {
-        handleFirestoreError(err, OperationType.CREATE, `${path}/${user.uid}_${nextPeriod}`);
-      } catch (jsonErr: any) {
-        setError("Error saving prediction notes: " + jsonErr.message);
-      }
-    } finally {
-      setSavingPrediction(false);
-    }
+    await savePeriodRecord(nextPeriod, newPredictionNote, data.prediction.predictedNumbers);
   };
 
   // Helper: Toggle tracked tracker alarms
@@ -382,45 +443,6 @@ export default function App() {
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               <span>{refreshing ? '正在抓取同步...' : '极速强制同步'}</span>
             </button>
-
-            {/* Firebase Auth User Status Widget */}
-            {authLoading ? (
-              <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-            ) : user ? (
-              <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 py-1 px-2.5 rounded-lg">
-                {user.photoURL ? (
-                  <img 
-                    src={user.photoURL} 
-                    alt={user.displayName || ''} 
-                    className="w-5 h-5 rounded-full ring-1 ring-indigo-500/50" 
-                    referrerPolicy="no-referrer" 
-                  />
-                ) : (
-                  <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-[10px] uppercase text-white">
-                    {user.displayName ? user.displayName[0] : 'U'}
-                  </div>
-                )}
-                <div className="hidden sm:flex flex-col text-[10px] items-start leading-none max-w-[80px]">
-                  <span className="text-white font-medium truncate w-full">
-                    {user.displayName || '已登录'}
-                  </span>
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  className="ml-1 px-1.5 py-0.5 bg-slate-950 text-[10px] text-slate-400 hover:text-rose-400 border border-slate-850 hover:border-rose-950/50 rounded font-medium transition cursor-pointer"
-                >
-                  注销
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={loginWithGoogle}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white transition cursor-pointer shadow-md"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-white/90 animate-pulse" />
-                <span>Google 登录</span>
-              </button>
-            )}
           </div>
         </div>
       </header>
@@ -757,174 +779,198 @@ export default function App() {
                 </div>
               </div>
 
-              {/* LIVE AI GEMINI DEEP CONSULTATION ESSAY */}
-              <div className="bg-slate-900/30 border border-slate-900 rounded-2xl p-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                  <div>
-                    <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                      <Sparkles className="w-4.5 h-4.5 text-indigo-400 animate-pulse" />
-                      <span>Gemini 专家混炼学术深度报告</span>
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      基于本期运算参数与 495 期完整底盘，传召大模型撰写深度学派报告
-                    </p>
-                  </div>
-                  <button
-                    onClick={requestAiReport}
-                    disabled={generatingAi}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-md transition cursor-pointer self-start sm:self-center"
-                  >
-                    {generatingAi ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>正在传译撰写中...</span>
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>一键生成学术报告</span>
-                      </>
-                    )}
-                  </button>
-                </div>
+              {/* KV SPACE HISTORICAL RECORDS & VERIFICATION ARCHIVE (10 PERIODS) */}
+              <div className="bg-slate-900/40 border border-slate-900 p-6 rounded-3xl relative overflow-hidden shadow-2xl">
+                <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
-                <AnimatePresence mode="wait">
-                  {aiReport ? (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="bg-slate-950/80 border border-slate-850 p-5 rounded-xl prose max-w-none text-xs text-slate-300 leading-relaxed font-sans max-h-96 overflow-y-auto whitespace-pre-line"
-                    >
-                      {aiReport}
-                    </motion.div>
-                  ) : generatingAi ? (
-                    <div className="bg-slate-950/50 border border-slate-900 py-10 rounded-xl flex flex-col items-center justify-center text-slate-400 text-xs">
-                      <motion.div 
-                        animate={{ scale: [1, 1.1, 1] }}
-                        transition={{ repeat: Infinity, duration: 1.5 }}
-                        className="w-12 h-12 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-500 mb-3"
-                      >
-                        <Sparkles className="w-5 h-5" />
-                      </motion.div>
-                      <span>专家模型正在测算轨迹并演算混沌模型...</span>
-                    </div>
-                  ) : (
-                    <div className="bg-slate-950/40 border border-dashed border-slate-850 p-6 rounded-xl text-center text-slate-500 text-xs">
-                      点击上方 “一键生成学术报告” 按钮，激活 Gemini API 撰写具有高等统计混沌学说服力的分析手稿。
-                    </div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* FIREBASE AUTH COLLABORATIVE INTERACTION BOX */}
-              {user ? (
-                <div className="bg-slate-900/40 border border-slate-900 p-6 rounded-3xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none" />
-                  
-                  <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-1.5">
-                    <Database className="w-4 h-4 text-indigo-400" />
-                    <span>我的 Firebase 云端排除收藏夹</span>
+                {/* Section Header with KV Live Sync */}
+                <div className="flex items-center gap-2 mb-5 border-b border-slate-850/80 pb-4 flex-wrap">
+                  <span className="p-1.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-indigo-400">
+                    <History className="w-4 h-4" />
+                  </span>
+                  <h3 className="text-base font-bold text-white tracking-tight">
+                    各期推演历史记录与开奖验证 (最近 10 期)
                   </h3>
-                  
-                  {/* Save current prediction and note */}
-                  <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-850/60 mb-5">
-                    <p className="text-xs text-indigo-400 font-mono mb-2 flex items-center gap-1">
-                      <span>💾 锁定下期 (第 {(parseInt(latestDraw.period, 10) + 1).toString()} 期) 排除码:</span>
-                      <strong className="text-indigo-300 font-bold bg-indigo-950/50 px-1.5 py-0.5 rounded border border-indigo-900/40">
-                        {prediction.predictedNumbers.map(n => n.toString().padStart(2, '0')).join(', ')}
-                      </strong>
-                    </p>
-                    <div className="flex flex-col md:flex-row gap-3">
-                      <input 
-                        type="text"
-                        placeholder="在此输入个人对本期预测号码的思路分析或首尾对冲对锁备注 (支持云同步)..."
-                        value={newPredictionNote}
-                        onChange={(e) => setNewPredictionNote(e.target.value)}
-                        className="bg-slate-900 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 px-4 py-2.5 rounded-lg flex-1 focus:outline-none focus:border-indigo-500"
-                      />
-                      <button
-                        onClick={saveCurrentPrediction}
-                        disabled={savingPrediction}
-                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer transition whitespace-nowrap"
-                      >
-                        {savingPrediction ? "云端保存中..." : "保存记录至云端"}
-                      </button>
-                    </div>
-                  </div>
+                  <span className="text-[10px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-2.5 py-0.5 rounded-full font-mono font-semibold flex items-center gap-1 shadow-sm ml-auto">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    KV 空间实时同步
+                  </span>
+                </div>
 
-                  {/* List of saved records */}
-                  {savedPredictions.length > 0 ? (
-                    <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                      {savedPredictions.map((saved) => (
-                        <div key={saved.id} className="bg-slate-950/40 border border-slate-900/60 p-3.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <span className="font-mono font-bold text-indigo-400 bg-indigo-950/30 px-2 py-0.5 rounded border border-indigo-900/30">第 {saved.period} 期</span>
-                              <span className="text-[10px] text-slate-500 font-mono">
-                                {saved.createdAt?.seconds 
-                                  ? new Date(saved.createdAt.seconds * 1000).toLocaleString() 
-                                  : '刚刚'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                              <span className="text-slate-400 text-[10px]">云端排除码:</span>
-                              <div className="flex gap-1">
-                                {saved.predictedNumbers?.map((n: number, i: number) => (
-                                  <span key={i} className="bg-slate-900 text-[10.5px] text-slate-350 font-mono font-bold px-1.5 py-0.5 rounded border border-slate-800">
-                                    {n.toString().padStart(2, '0')}
-                                  </span>
-                                ))}
+                {/* 10 Periods Records List */}
+                {(() => {
+                  const nextPeriod = (parseInt(latestDraw.period, 10) + 1).toString();
+                  // Take exactly 10 past periods + upcoming pending period
+                  const pastTen = [...(data.predictions || [])].reverse().slice(0, 10);
+                  const allRecords = [
+                    {
+                      period: nextPeriod,
+                      predictedNumbers: prediction.predictedNumbers,
+                      actualNumbers: null as number[] | null,
+                      isPending: true,
+                      isSuccessful: null as boolean | null,
+                      hitNumbers: [] as number[]
+                    },
+                    ...pastTen.map(p => ({
+                      period: p.period,
+                      predictedNumbers: p.predictedNumbers,
+                      actualNumbers: p.actualNumbers || null,
+                      isPending: false,
+                      isSuccessful: p.isSuccessful,
+                      hitNumbers: p.hitNumbers || []
+                    }))
+                  ];
+
+                  return (
+                    <div className="space-y-3.5 max-h-[520px] overflow-y-auto pr-1">
+                      {allRecords.map((item) => {
+                            const isSuccess = item.isSuccessful === true;
+                            const isPending = item.isPending === true;
+                            const isFailed = item.isSuccessful === false;
+                            const savedInfo = localSavedNotes[item.period];
+                            const firebaseSaved = savedPredictions.find(s => s.period === item.period);
+                            const noteText = savedInfo?.notes || firebaseSaved?.notes;
+
+                            return (
+                              <div
+                                key={item.period}
+                                className={`rounded-2xl p-4 transition-all ${
+                                  isSuccess
+                                    ? 'bg-gradient-to-r from-emerald-950/60 via-slate-900/90 to-emerald-950/30 border-2 border-emerald-400/80 shadow-lg shadow-emerald-500/15 ring-1 ring-emerald-400/40'
+                                    : isPending
+                                    ? 'bg-gradient-to-r from-amber-950/35 via-indigo-950/25 to-slate-950 border-2 border-amber-400/70 shadow-md shadow-amber-500/10'
+                                    : 'bg-slate-950/60 border border-slate-850'
+                                }`}
+                              >
+                                {/* Top Line: Period Badge & Verification Status */}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span
+                                      className={`font-mono text-xs font-bold px-2.5 py-0.5 rounded-md border ${
+                                        isSuccess
+                                          ? 'bg-emerald-900/50 text-emerald-200 border-emerald-500/60 shadow-sm'
+                                          : isPending
+                                          ? 'bg-amber-950/50 text-amber-200 border-amber-500/60'
+                                          : 'bg-slate-900 text-slate-300 border-slate-800'
+                                      }`}
+                                    >
+                                      第 {item.period} 期 {isPending && '(下期目标)'}
+                                    </span>
+
+                                    {/* Verification Status Pill */}
+                                    {isSuccess && (
+                                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300 bg-emerald-500/25 border border-emerald-400 px-3 py-1 rounded-full shadow-md shadow-emerald-500/25">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                                        <span>✨ 验证通过 · 完美排除 (0渗漏)</span>
+                                      </span>
+                                    )}
+
+                                    {isPending && (
+                                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-300 bg-amber-500/20 border border-amber-400/60 px-3 py-1 rounded-full shadow-md shadow-amber-500/20">
+                                        <Clock className="w-3.5 h-3.5 animate-spin text-amber-300" />
+                                        <span>⏳ 待验证 · 今晚 21:35 开奖</span>
+                                      </span>
+                                    )}
+
+                                    {isFailed && (
+                                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-400 bg-rose-950/40 border border-rose-900/50 px-2.5 py-0.5 rounded-full">
+                                        <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                                        <span>⚠️ 渗漏命中: {item.hitNumbers?.map(n => n.toString().padStart(2, '0')).join(', ')}</span>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Action / Delete note if saved */}
+                                  {noteText && (
+                                    <button
+                                      onClick={() => removePeriodRecord(item.period, firebaseSaved?.id)}
+                                      className="text-[11px] text-slate-500 hover:text-rose-400 self-end sm:self-auto flex items-center gap-1 cursor-pointer transition"
+                                      title="移除此期保存的笔记"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                      <span>删除笔记</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Numbers Breakdown: 6 Predicted Exclusion vs 7 Actual Drawn */}
+                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 text-xs">
+                                  {/* Left: 6 Predicted Excluded Numbers */}
+                                  <div className="lg:col-span-6 bg-slate-900/50 p-2.5 rounded-xl border border-slate-850/60">
+                                    <div className="text-[10px] text-slate-400 font-mono mb-1.5 flex items-center justify-between">
+                                      <span>六码不可能出现推演:</span>
+                                      {isSuccess && <span className="text-emerald-400 font-bold">100% 成功规避</span>}
+                                    </div>
+                                    <div className="flex gap-1.5 flex-wrap">
+                                      {item.predictedNumbers?.map((num, i) => (
+                                        <span
+                                          key={i}
+                                          className={`w-7 h-7 rounded-lg font-mono font-bold text-xs flex items-center justify-center shadow-sm ${
+                                            isSuccess
+                                              ? 'bg-emerald-950 border border-emerald-400/80 text-emerald-200'
+                                              : isPending
+                                              ? 'bg-slate-900 border border-indigo-500/50 text-indigo-300'
+                                              : 'bg-slate-900 border border-slate-750 text-slate-300'
+                                          }`}
+                                        >
+                                          {num.toString().padStart(2, '0')}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* Right: Actual Drawn Numbers */}
+                                  <div className="lg:col-span-6 bg-slate-900/50 p-2.5 rounded-xl border border-slate-850/60">
+                                    <div className="text-[10px] text-slate-400 font-mono mb-1.5">
+                                      {isPending ? '实际开奖情况:' : '实际开出 7 个奖号 (6正码+1特码):'}
+                                    </div>
+                                    {isPending ? (
+                                      <div className="text-[11px] text-amber-300/90 italic font-sans flex items-center gap-1 py-1">
+                                        <Clock className="w-3 h-3 animate-spin text-amber-400" />
+                                        <span>等待今晚 21:35 官方开奖并自动比对...</span>
+                                      </div>
+                                    ) : (
+                                      <div className="flex gap-1.5 items-center flex-wrap">
+                                        {item.actualNumbers?.slice(0, 6).map((num, i) => (
+                                          <span
+                                            key={i}
+                                            className="w-7 h-7 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 font-mono text-xs flex items-center justify-center"
+                                          >
+                                            {num.toString().padStart(2, '0')}
+                                          </span>
+                                        ))}
+                                        <span className="text-slate-600 font-bold text-xs">+</span>
+                                        <span
+                                          className="w-7 h-7 rounded-lg bg-rose-950/80 border border-rose-500/60 text-rose-300 font-mono font-bold text-xs flex items-center justify-center shadow-sm"
+                                          title="特别号码"
+                                        >
+                                          {item.actualNumbers?.[6]?.toString().padStart(2, '0')}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Custom Saved Notes for this Period */}
+                                {noteText && (
+                                  <div className="mt-3 bg-slate-900/80 border-l-2 border-indigo-400/80 px-3 py-2 rounded-r-lg text-xs">
+                                    <div className="text-[10px] text-indigo-400 font-mono mb-0.5 flex items-center gap-1">
+                                      <Bookmark className="w-3 h-3" />
+                                      <span>已归档推演笔记:</span>
+                                    </div>
+                                    <p className="text-slate-200 text-[11px] leading-relaxed italic">
+                                      "{noteText}"
+                                    </p>
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                            {saved.notes && (
-                              <p className="text-slate-300 text-[11px] leading-relaxed italic bg-slate-950/50 py-1.5 px-3 rounded mt-1 border-l-2 border-indigo-500/50 font-sans">
-                                "{saved.notes}"
-                              </p>
-                            )}
-                          </div>
-                          
-                          <button
-                            onClick={async () => {
-                              try {
-                                await deleteDoc(doc(db, 'saved_predictions', saved.id));
-                              } catch (err) {
-                                console.error("Error deleting document:", err);
-                              }
-                            }}
-                            className="text-slate-500 hover:text-rose-400 cursor-pointer self-end sm:self-center transition text-xs font-medium bg-slate-900 px-2.5 py-1 rounded-md border border-slate-850 hover:border-rose-950 hover:bg-rose-955/5"
-                          >
-                            移除
-                          </button>
-                        </div>
-                      ))}
+                            );
+                          })}
                     </div>
-                  ) : (
-                    <p className="text-xs text-slate-600 text-center py-6 border border-dashed border-slate-900 rounded-2xl bg-slate-950/20">
-                      您暂无任何云端排除笔记。在上方输入思路备注，添加您的第一条专属对冲记录吧！
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="bg-gradient-to-r from-slate-900/55 to-indigo-950/15 border border-slate-900 p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
-                    <h3 className="text-sm font-semibold text-white flex items-center gap-1.5 mb-1.5">
-                      <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
-                      <span>解锁云端学术专属空间 (Firebase Enabled)</span>
-                    </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
-                      免费使用 Google 账户登录即可激活冷热排除自选收藏，在云端长期安全保存各期首尾排除笔记，并支持号码矩阵中的实时雷达高亮监控功能。
-                    </p>
-                  </div>
-                  <button 
-                    onClick={loginWithGoogle}
-                    className="flex items-center gap-2 px-4 shadow-md py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition cursor-pointer whitespace-nowrap self-start md:self-center"
-                  >
-                    <span>Google 账号一键登录</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
+                  );
+                })()}
+              </div>
 
             </div>
           )}
