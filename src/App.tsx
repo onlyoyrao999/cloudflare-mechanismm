@@ -457,153 +457,40 @@ export default function App() {
         </div>
       )}
 
-      {/* D盘主布局 */}
-      <main className="max-w-7xl mx-auto px-4 py-6 md:px-8 md:py-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* 主布局 */}
+      <main className="max-w-5xl mx-auto px-4 py-6 md:px-8 md:py-8 flex flex-col gap-6">
 
-        {/* ======================= LEFT METRICS BLOCK (4 COLS) ======================= */}
-        <section className="lg:col-span-4 flex flex-col gap-6">
-          
-          {/* LATEST DRAW DISPLAY */}
-          <div className="bg-slate-900/50 border border-slate-900 p-5 rounded-2xl">
-            <h3 className="text-xs font-mono font-medium tracking-wider text-slate-400 uppercase mb-3 flex items-center justify-between">
+        {/* LATEST DRAW DISPLAY */}
+        <div className="bg-slate-900/50 border border-slate-900 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-xs font-mono font-medium tracking-wider text-slate-400 uppercase mb-2 flex items-center gap-2">
               <span>最新开奖归档</span>
-              <span className="text-indigo-400">第 {latestDraw.period} 期</span>
+              <span className="text-indigo-400 font-bold bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-900/40">第 {latestDraw.period} 期</span>
             </h3>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {latestDraw.numbers.map((num, idx) => (
-                <div 
-                  key={idx} 
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center font-mono font-bold text-sm shadow-inner transition ${
-                    idx === 6 
-                      ? 'bg-rose-950/50 border border-rose-900 text-rose-300' // Special number/Bonus 
-                      : 'bg-slate-950 border border-slate-800 text-white'
-                  }`}
-                >
-                  {num.toString().padStart(2, '0')}
-                </div>
-              ))}
-            </div>
             {latestDraw.numbers.length > 6 && (
-              <p className="text-[10px] text-slate-500 mt-2 font-mono flex justify-end">
-                前 6 位为常规名次，第 7 位为隔期对冲名次
+              <p className="text-[11px] text-slate-500 font-mono">
+                前 6 位为常规名次，第 7 位为特别号码
               </p>
             )}
           </div>
-
-          {/* TRAJECTORY ACCURACY METER */}
-          <div className="bg-slate-900/50 border border-slate-900 p-5 rounded-2xl flex flex-col gap-4">
-            
-            <div>
-              <h3 className="text-xs font-mono font-medium text-slate-400 mb-1 uppercase tracking-wider">
-                轨迹回补回测精度
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                观察目标号 X 在隔期跳跃触发后，于随后 8 期内回补高几率区
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-950/60 border border-slate-900 p-3 rounded-xl text-center">
-                <span className="text-2xl font-bold font-mono tracking-tight text-indigo-400">
-                  {(summary.overallHitRate * 100).toFixed(1)}%
-                </span>
-                <span className="block text-[10px] text-slate-500 mt-0.5">闭合总回补率</span>
-              </div>
-              <div className="bg-slate-950/60 border border-slate-900 p-3 rounded-xl text-center">
-                <span className="text-2xl font-bold font-mono tracking-tight text-emerald-400">
-                  {(summary.hitRate1To4 * 100).toFixed(1)}%
-                </span>
-                <span className="block text-[10px] text-slate-500 mt-0.5">1-4期高发占比</span>
-              </div>
-            </div>
-
-            {/* BAR COMPASS */}
-            <div className="space-y-2 text-xs font-mono">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-slate-400">轨迹触发样本数</span>
-                <span className="text-slate-300 font-semibold">{summary.totalTriggers} 次</span>
-              </div>
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-emerald-400 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  1-4期快速追进
-                </span>
-                <span className="text-slate-300 font-semibold">{summary.totalHit1To4} 次</span>
-              </div>
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-blue-400 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                  5-8期延迟回补
-                </span>
-                <span className="text-slate-300 font-semibold">{summary.totalHit5To8} 次</span>
-              </div>
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-rose-400 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                  未回补出界 (Miss)
-                </span>
-                <span className="text-slate-300 font-semibold">{summary.totalMisses} 次</span>
-              </div>
-            </div>
-
-            {/* STAT PROGRESS VISUALIZER */}
-            <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden flex border border-slate-905">
+          <div className="flex items-center gap-2 flex-wrap">
+            {latestDraw.numbers.map((num, idx) => (
               <div 
-                style={{ width: `${(summary.totalHit1To4 / summary.totalTriggers) * 100}%` }}
-                className="bg-emerald-500 h-full"
-                title={`1-4期: ${summary.totalHit1To4} 次`}
-              />
-              <div 
-                style={{ width: `${(summary.totalHit5To8 / summary.totalTriggers) * 100}%` }}
-                className="bg-blue-500 h-full"
-                title={`5-8期: ${summary.totalHit5To8} 次`}
-              />
-              <div 
-                style={{ width: `${(summary.totalMisses / summary.totalTriggers) * 100}%` }}
-                className="bg-rose-500/80 h-full"
-                title={`未回补: ${summary.totalMisses} 次`}
-              />
-            </div>
+                key={idx} 
+                className={`w-10 h-10 rounded-xl flex items-center justify-center font-mono font-bold text-sm shadow-inner transition ${
+                  idx === 6 
+                    ? 'bg-rose-950/60 border border-rose-800 text-rose-300 ring-1 ring-rose-500/30' // Special number/Bonus 
+                    : 'bg-slate-950 border border-slate-800 text-white'
+                }`}
+              >
+                {num.toString().padStart(2, '0')}
+              </div>
+            ))}
           </div>
+        </div>
 
-          {/* EXCLUSION ENGINE EFFICIENCY */}
-          <div className="bg-slate-900/50 border border-slate-900 p-5 rounded-2xl flex flex-col gap-4">
-            <div>
-              <h3 className="text-xs font-mono font-medium text-slate-400 mb-1 uppercase tracking-wider">
-                专家排除算法绩效
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                双重对冲防线下的 6 号排除算法在 165 期历史中的真实准确性
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-950/60 border border-slate-900 p-3 rounded-xl text-center">
-                <span className="text-2xl font-bold font-mono tracking-tight text-indigo-400">
-                  {averageIndividualAccuracy.toFixed(1)}%
-                </span>
-                <span className="block text-[10px] text-slate-500 mt-0.5">单号排除成功率</span>
-              </div>
-              <div className="bg-slate-950/60 border border-slate-900 p-3 rounded-xl text-center">
-                <span className="text-2xl font-bold font-mono tracking-tight text-white">
-                  {(summary.exclusionSuccessRate * 100).toFixed(1)}%
-                </span>
-                <span className="block text-[10px] text-slate-500 mt-0.5">6码全面成功率</span>
-              </div>
-            </div>
-
-            <div className="bg-indigo-950/20 border border-indigo-900/30 p-3 rounded-xl flex items-start gap-2.5">
-              <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
-              <div className="text-[11px] text-slate-400 space-y-1">
-                <p><strong>防共振对冲保驾</strong>：每一期预测都将剔除当前活跃在追逐路径上的号码目标；并强制在最近期排除名单过滤，契合严密。每期皆 100% 自动对碰复盘。</p>
-              </div>
-            </div>
-          </div>
-
-        </section>
-
-        {/* ======================= RIGHT CONTENT CANVAS (8 COLS) ======================= */}
-        <section className="lg:col-span-8 flex flex-col gap-6">
+        {/* ======================= CONTENT CANVAS ======================= */}
+        <section className="flex flex-col gap-6">
 
           {/* INNER NAVIGATION TABS */}
           <div className="flex border-b border-slate-900 gap-1 overflow-x-auto">
